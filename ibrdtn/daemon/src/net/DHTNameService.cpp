@@ -180,6 +180,12 @@ void dtn::dht::DHTNameService::componentUp() throw () {
 					<< IBRCOMMON_LOGGER_ENDL;
 		return;
 	}
+	myid.erase();
+	for(int i = 0; i < sizeof(_context.id); i++) {
+		char tmp[3];
+		snprintf(tmp, 3, "%02x", _context.id[i]);
+		myid.append(tmp);
+	}
 	IBRCOMMON_LOGGER_TAG("DHTNameService", info) << "DHT initialized on Port: " << _context.port
 				<< " with ID: " << myid << IBRCOMMON_LOGGER_ENDL;
 	this->_initialized = true;
