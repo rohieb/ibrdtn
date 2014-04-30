@@ -1,11 +1,15 @@
 #!/bin/bash -xe
 #
 
-DESTDIR="$(pwd)/linux-inst"
+DESTDIR="${HOME}/Projects/dtn/buildroot"
+export PKG_CONFIG_PATH=$PKG_CONFIG_PATH:${DESTDIR}/lib/pkgconfig
+
+COLOR="\033[01;31m"
+NOCOLOR="\033[00m"
 
 # set defaults
 [ -z "${CLEAN}" ] && CLEAN=1
-[ -z "${STRIP}" ] && STRIP=1
+[ -z "${STRIP}" ] && STRIP=0
 [ -z "${DEBUG}" ] && DEBUG=0
 [ -z "${PROFILE}" ] && PROFILE=0
 
@@ -21,40 +25,44 @@ if [ ${PROFILE} -eq 1 ]; then
 fi
 
 # clean destdir
-rm -rf ${DESTDIR}
+#rm -rf ${DESTDIR}
 
+echo -e "${COLOR}Building ibrcommon...${NOCOLOR}"
 cd ibrcommon
 if [ ${CLEAN} -eq 1 ]; then
     [ -f Makefile ] && make clean
     bash autogen.sh
     ./configure --prefix=${DESTDIR} --with-openssl --with-lowpan
 fi
-make -j
+make -j2
 make install
 cd ..
 
+echo -e "${COLOR}Building ibrdtn/ibrdtn...${NOCOLOR}"
 cd ibrdtn/ibrdtn
 if [ ${CLEAN} -eq 1 ]; then
     [ -f Makefile ] && make clean
     bash autogen.sh
     ./configure --prefix=${DESTDIR} --with-dtnsec --with-compression
 fi
-make -j
+make -j2
 make install
 cd ..
 
+echo -e "${COLOR}Building ibrdtn/daemon...${NOCOLOR}"
 cd daemon
 if [ ${CLEAN} -eq 1 ]; then
     [ -f Makefile ] && make clean
     bash autogen.sh
     ./configure --prefix=${DESTDIR} --with-curl --with-lowpan --with-sqlite --with-dtnsec --with-compression --with-tls --with-cppunit 
 fi
-make -j
+make -j2
 make install
 cd ..
 cd ..
 
 if [ ${STRIP} -eq 1 ]; then
+echo -e "${COLOR}Stripping binaries...${NOCOLOR}"
 # strip binaries
 BINARIES="sbin/dtnd"
 for BINARY in ${BINARIES}; do
