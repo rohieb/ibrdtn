@@ -11,12 +11,15 @@ net_SOURCES = 	BundleReceivedEvent.cpp \
 	ConnectionManager.h \
 	ConvergenceLayer.cpp \
 	ConvergenceLayer.h \
+	Discovery.h \
 	DiscoveryAgent.cpp \
 	DiscoveryAgent.h \
 	DiscoveryBeacon.cpp \
 	DiscoveryBeacon.h \
 	DiscoveryService.cpp \
 	DiscoveryService.h \
+	DiscoveryServiceParam.cpp \
+	DiscoveryServiceParam.h \
 	DiscoveryBeaconHandler.cpp \
 	DiscoveryBeaconHandler.h \
 	IPNDAgent.cpp \

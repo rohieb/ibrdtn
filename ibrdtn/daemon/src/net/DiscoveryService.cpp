@@ -20,7 +20,7 @@
  */
 
 #include "net/DiscoveryService.h"
-#include "ibrdtn/data/SDNV.h"
+#include "ibrdtn/data/Number.h"
 #include "ibrdtn/data/BundleString.h"
 #include <string>
 
@@ -31,30 +31,82 @@ namespace dtn
 	namespace net
 	{
 		DiscoveryService::DiscoveryService()
-		 : _service_protocol(dtn::core::Node::CONN_UNDEFINED)
+		 : _service_protocol(dtn::core::Node::CONN_UNDEFINED), _param(0)
 		{
 		}
 
-		DiscoveryService::DiscoveryService(const dtn::core::Node::Protocol p, const std::string &parameters)
-		 : _service_protocol(p), _service_name(asTag(p)), _service_parameters(parameters)
+		/**
+		 * @param param The DiscoveryService instance will not take ownership of the
+		 *  pointer, you have to destroy it yourself.
+		 */
+		DiscoveryService::DiscoveryService(const dtn::core::Node::Protocol p, DiscoveryServiceParam * param)
+		 : _service_protocol(p), _param(param->clone())
 		{
 		}
 
-		DiscoveryService::DiscoveryService(const std::string &name, const std::string &parameters)
-		 : _service_protocol(asProtocol(name)), _service_name(name), _service_parameters(parameters)
+		DiscoveryService::DiscoveryService(const DiscoveryService& other)
+		 : _service_protocol(other._service_protocol), _param(0)
 		{
+			if (other._param)
+			{
+				_param = other._param->clone();
+			}
+		}
+
+		DiscoveryService& DiscoveryService::operator=(const DiscoveryService& other)
+		{
+			_service_protocol = other._service_protocol;
+
+			DiscoveryServiceParam * p = 0;
+			if (other._param)
+			{
+				p = other._param->clone();
+			}
+			delete _param;
+			_param = p;
+
+			return *this;
 		}
 
 		DiscoveryService::~DiscoveryService()
 		{
+			delete _param;
+			_param = 0;
 		}
 
-		dtn::data::Length DiscoveryService::getLength() const
+		bool DiscoveryService::operator==(const DiscoveryService& o) const
 		{
-			BundleString name(_service_name);
-			BundleString parameters(_service_parameters);
+			return (_service_protocol == o._service_protocol) &&
+				(_param == o._param ||
+					(_param && o._param && (*_param) == (*(o._param)))
+				);
+		}
 
-			return name.getLength() + parameters.getLength();
+		dtn::data::Length DiscoveryService::getLength(Discovery::Protocol version) const throw (WrongVersionException)
+		{
+			dtn::data::Number length;
+			switch (version)
+			{
+				case Discovery::DISCO_VERSION_01:
+				case Discovery::DISCO_VERSION_00:
+				{
+					if (_param)
+					{
+						BundleString name(asTag(_service_protocol));
+						return name.getLength() + _param->getLength(version);
+					}
+					else
+					{
+						return 0;
+					}
+				}
+				default:
+				{
+					std::ostringstream err;
+					err << std::hex << version;
+					throw WrongVersionException(err.str());
+				}
+			}
 		}
 
 		dtn::core::Node::Protocol DiscoveryService::getProtocol() const
@@ -62,19 +114,25 @@ namespace dtn
 			return _service_protocol;
 		}
 
-		const std::string& DiscoveryService::getName() const
+		/** @return a pointer to the parameter object. The pointer is owned by
+		 * the DiscoveryService object. */
+		DiscoveryServiceParam * DiscoveryService::getParam()
 		{
-			return _service_name;
+			return _param;
 		}
 
-		const std::string& DiscoveryService::getParameters() const
+		/** @return a pointer to the parameter object. The pointer is owned by
+		 * the DiscoveryService object. */
+		const DiscoveryServiceParam * DiscoveryService::getParam() const
 		{
-			return _service_parameters;
+			return _param;
 		}
 
-		void DiscoveryService::update(const std::string &parameters)
+		/** @param param DiscoveryService will not take ownership of this pointer */
+		void DiscoveryService::update(DiscoveryServiceParam * param)
 		{
-			_service_parameters = parameters;
+			delete _param;
+			_param = param->clone();
 		}
 
 		dtn::core::Node::Protocol DiscoveryService::asProtocol(const std::string &tag)
@@ -117,6 +175,12 @@ namespace dtn
 			}
 			else if (tag == "email") {
 				return dtn::core::Node::CONN_EMAIL;
+			}
+			else if (tag == "dhtns") {
+				return dtn::core::Node::CONN_DHT;
+			}
+			else if (tag == "dtntp") {
+				return dtn::core::Node::CONN_DTNTP;
 			}
 
 			return dtn::core::Node::CONN_UNSUPPORTED;
@@ -167,33 +231,161 @@ namespace dtn
 
 			case dtn::core::Node::CONN_EMAIL:
 				return "email";
+
+			case dtn::core::Node::CONN_DHT:
+				return "dhtns";
+
+			case dtn::core::Node::CONN_DTNTP:
+				return "dtntp";
 			}
 
 			return "unknown";
 		}
 
-		std::ostream &operator<<(std::ostream &stream, const DiscoveryService &service)
+		/**
+		 * Generate a byte representation for the specified protocol version.
+		 * @throws a @c WrongVersionException if the specified protocol
+		 *  version is not (yet) implemented, or an @c IllegalServiceException if
+		 *  the contained parameters are invalid in the current context.
+		 */
+		std::string DiscoveryService::pack(Discovery::Protocol version) const throw (WrongVersionException, IllegalServiceException)
 		{
-			BundleString name(service._service_name);
-			BundleString parameters(service._service_parameters);
+			std::ostringstream ss;
 
-			stream << name << parameters;
+			switch (version)
+			{
+				case Discovery::DISCO_VERSION_01:
+				case Discovery::DISCO_VERSION_00:
+				{
+					std::string param_bytes = _param->pack(version);
+					if (param_bytes.size() < 1)
+					{
+						throw IllegalServiceException("empty parameter string");
+					}
+					ss << dtn::data::BundleString(DiscoveryService::asTag(_service_protocol));
+					ss << param_bytes;
 
-			return stream;
+					break;
+				}
+
+				default:
+				{
+					std::ostringstream err;
+					err << std::hex << version;
+					throw WrongVersionException(err.str());
+				}
+			}
+
+			return ss.str();
 		}
 
-		std::istream &operator>>(std::istream &stream, DiscoveryService &service)
+		/**
+		 * Generate a concrete instance from the bytes in an std::istream. You can
+		 * call @c getLength() on the returned instance to determine how many
+		 * bytes were read from the stream.
+		 *
+		 * @return a pointer to the unpacked instance
+		 * @param version the discovery protocol version
+		 * @param stream the input stream to read from
+		 * @throw The following exceptions may be thrown:
+		 *  \li @c WrongVersionException: the specified @c version is not (yet)
+		 *      implemented
+		 *  \li @c ParseException: There were errors parsing the @c stream. Call
+		 *      ParseException::getBytesRead() on the thrown object to obtain the
+		 *      number of bytes which were read from the stream.
+		 *  \li @c IllegalServiceException: The parameter(s) read from the stream
+		 *      are not valid in the current context.
+		 */
+		DiscoveryService& DiscoveryService::unpack(std::istream& stream, Discovery::Protocol version) throw (ParseException, IllegalServiceException, WrongVersionException)
 		{
-			BundleString name;
-			BundleString parameters;
+			size_t bytes_read = 0;
+			DiscoveryServiceParam * param = 0;
 
-			stream >> name >> parameters;
+			switch (version)
+			{
+				case Discovery::DISCO_VERSION_01:
+				case Discovery::DISCO_VERSION_00:
+				{
+					BundleString name;
+					stream >> name;
+					bytes_read += name.getLength();
+					if (stream.fail())
+					{
+						std::ostringstream err;
+						err << "could not read service name for version " << version;
+						throw ParseException(err.str(), bytes_read);
+					}
 
-			service._service_protocol = DiscoveryService::asProtocol((const std::string&)name);
-			service._service_name = (const std::string&)name;
-			service._service_parameters = (const std::string&)parameters;
+					_service_protocol = DiscoveryService::asProtocol((const std::string&) name);
 
-			return stream;
+					try
+					{
+						switch (_service_protocol)
+						{
+							case dtn::core::Node::CONN_TCPIP:
+							case dtn::core::Node::CONN_UDPIP:
+							case dtn::core::Node::CONN_LOWPAN:
+							case dtn::core::Node::CONN_EMAIL:
+							case dtn::core::Node::CONN_DTNTP:
+							{
+								BundleString params;
+								stream >> params;
+								bytes_read += params.getLength();
+								if (stream.fail())
+								{
+									std::ostringstream err;
+									err << "could not read service parameters for version "
+										<< version;
+									throw ParseException(err.str(), bytes_read);
+								}
+
+								param = DiscoveryServiceParam::fromKeyValueString((const std::string&) params);
+								break;
+							}
+
+							case dtn::core::Node::CONN_DGRAM_ETHERNET:
+							case dtn::core::Node::CONN_DGRAM_UDP:
+							case dtn::core::Node::CONN_DGRAM_LOWPAN:
+							{
+								param = DatagramServiceParam::unpack(stream, version);
+								bytes_read += param->getLength(version);
+								break;
+							}
+
+							case dtn::core::Node::CONN_DHT:
+							{
+								param = DHTServiceParam::unpack(stream, version);
+								bytes_read += param->getLength(version);
+								break;
+							}
+
+							default:
+							{
+								std::ostringstream err;
+								err << "ignoring unknown service protocol " <<
+									(const std::string&) name << " for version " << version;
+								throw ParseException(err.str(), bytes_read);
+							}
+						} // switch (_service_protocol)
+					}
+					catch (const ibrcommon::Exception& e)
+					{
+						throw;
+					}
+
+					// if no exception was thrown, param contains the new parameter
+					delete _param;
+					_param = param;
+					return *this;
+				} // case Discovery::DISCO_VERSION_00 | Discovery::DISCO_VERSION_01
+
+				default:
+				{
+					std::ostringstream err;
+					err << std::hex << version;
+					throw WrongVersionException(err.str());
+				}
+			} // switch (version)
 		}
 	}
 }

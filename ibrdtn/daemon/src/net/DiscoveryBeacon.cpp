@@ -38,7 +38,7 @@ namespace dtn
 {
 	namespace net
 	{
-		DiscoveryBeacon::DiscoveryBeacon(const Protocol version, const dtn::data::EID &eid)
+		DiscoveryBeacon::DiscoveryBeacon(const Discovery::Protocol version, const dtn::data::EID &eid)
 		 : _version(version), _flags(BEACON_NO_FLAGS), _canonical_eid(eid), _sn(0), _period(1)
 		{
 		}
@@ -51,10 +51,10 @@ namespace dtn
 		{
 			switch (_version)
 			{
-			case DISCO_VERSION_00:
+			case Discovery::DISCO_VERSION_00:
 				return (_flags & DiscoveryBeacon::BEACON_SHORT);
 
-			case DISCO_VERSION_01:
+			case Discovery::DISCO_VERSION_01:
 				return !(_flags & DiscoveryBeacon::BEACON_CONTAINS_EID);
 			};
 
@@ -143,12 +143,12 @@ namespace dtn
 
 			switch (announcement._version)
 			{
-				case DiscoveryBeacon::DISCO_VERSION_00:
+				case Discovery::DISCO_VERSION_00:
 				{
 					if (services.empty())
 					{
 						const unsigned char flags = DiscoveryBeacon::BEACON_SHORT | announcement._flags;
-						stream << (unsigned char)DiscoveryBeacon::DISCO_VERSION_00 << flags;
+						stream << (unsigned char)Discovery::DISCO_VERSION_00 << flags;
 						return stream;
 					}
 
@@ -161,24 +161,32 @@ namespace dtn
 					// add service block length
 					for (dtn::net::DiscoveryBeacon::service_list::const_iterator iter = services.begin(); iter != services.end(); ++iter)
 					{
-						beacon_len += (*iter).getLength();
+						beacon_len += (*iter).getLength(Discovery::DISCO_VERSION_00);
 					}
 
-					stream << (unsigned char)DiscoveryBeacon::DISCO_VERSION_00 << announcement._flags << beacon_len << eid;
+					stream << (unsigned char)Discovery::DISCO_VERSION_00 << announcement._flags << beacon_len << eid;
 
 					for (dtn::net::DiscoveryBeacon::service_list::const_iterator iter = services.begin(); iter != services.end(); ++iter)
 					{
-						stream << (*iter);
+						try
+						{
+							stream << (*iter).pack(Discovery::DISCO_VERSION_00);
+						}
+						catch (const std::exception& e)
+						{
+							IBRCOMMON_LOGGER_DEBUG_TAG("DiscoveryBeacon", 60) << e.what()
+								<< IBRCOMMON_LOGGER_ENDL;
+						}
 					}
 
 					break;
 				}
 
-				case DiscoveryBeacon::DISCO_VERSION_01:
+				case Discovery::DISCO_VERSION_01:
 				{
 					unsigned char flags = 0;
 
-					stream << (unsigned char)DiscoveryBeacon::DISCO_VERSION_01;
+					stream << (unsigned char)Discovery::DISCO_VERSION_01;
 
 					if (announcement._canonical_eid != dtn::data::EID())
 					{
@@ -209,12 +217,25 @@ namespace dtn
 
 					if ( flags & DiscoveryBeacon::BEACON_SERVICE_BLOCK )
 					{
-						stream << dtn::data::Number(services.size());
+						std::ostringstream ss;
+						dtn::data::Number service_size(0);
 
 						for (dtn::net::DiscoveryBeacon::service_list::const_iterator iter = services.begin(); iter != services.end(); ++iter)
 						{
-							stream << (*iter);
+							try
+							{
+								ss << (*iter).pack(Discovery::DISCO_VERSION_01);
+								service_size++;
+							}
+							catch (const std::exception& e)
+							{
+								IBRCOMMON_LOGGER_DEBUG_TAG("DiscoveryBeacon", 60) << e.what()
+									<< IBRCOMMON_LOGGER_ENDL;
+							}
 						}
+
+						stream << service_size;
+						stream << ss.str();
 					}
 
 					// not standard conform in version 01!
@@ -227,7 +248,7 @@ namespace dtn
 					break;
 				}
 
-				case DiscoveryBeacon::DTND_IPDISCOVERY:
+				case Discovery::DTND_IPDISCOVERY:
 				{
 					uint8_t cl_type = 1;
 					char zero = '\0';
@@ -279,10 +300,10 @@ namespace dtn
 			unsigned char version = 0;
 
 			// do we running DTN2 compatibility mode?
-			if (announcement._version == DiscoveryBeacon::DTND_IPDISCOVERY)
+			if (announcement._version == Discovery::DTND_IPDISCOVERY)
 			{
 				// set version to IPDiscovery (DTN2)
-				version = DiscoveryBeacon::DTND_IPDISCOVERY;
+				version = Discovery::DTND_IPDISCOVERY;
 			}
 			else
 			{
@@ -292,7 +313,7 @@ namespace dtn
 
 			switch (version)
 			{
-			case DiscoveryBeacon::DISCO_VERSION_00:
+			case Discovery::DISCO_VERSION_00:
 			{
 				IBRCOMMON_LOGGER_DEBUG_TAG("DiscoveryBeacon", 60) << "beacon version 1 received" << IBRCOMMON_LOGGER_ENDL;
 
@@ -326,15 +347,27 @@ namespace dtn
 				while (remain > 0)
 				{
 					// decode the service blocks
-					DiscoveryService service;
-					stream >> service;
-					services.push_back(service);
-					remain -= static_cast<int>(service.getLength());
+					size_t len = 0;
+					try
+					{
+						DiscoveryService service;
+						service.unpack(stream, announcement._version);
+						services.push_back(service);
+						len = service.getLength(announcement._version);
+					}
+					catch (const ibrcommon::Exception& e)
+					{
+						IBRCOMMON_LOGGER_DEBUG_TAG("DiscoveryBeacon", 60) << e.what()
+							<< IBRCOMMON_LOGGER_ENDL;
+					}
+
+					// don't loop forever
+					remain -= (len > 0 ? len : 1);
 				}
 				break;
 			}
 
-			case DiscoveryBeacon::DISCO_VERSION_01:
+			case Discovery::DISCO_VERSION_01:
 			{
 				IBRCOMMON_LOGGER_DEBUG_TAG("DiscoveryBeacon", 60) << "beacon version 2 received" << IBRCOMMON_LOGGER_ENDL;
 
@@ -378,10 +411,20 @@ namespace dtn
 					{
 						// decode the service blocks
 						DiscoveryService service;
-						stream >> service;
-						services.push_back(service);
+						try
+						{
+							service.unpack(stream, announcement._version);
+							services.push_back(service);
 
-						IBRCOMMON_LOGGER_DEBUG_TAG("DiscoveryBeacon", 85) << "\t " << service.getName() << " [" << service.getParameters() << "]" << IBRCOMMON_LOGGER_ENDL;
+							IBRCOMMON_LOGGER_DEBUG_TAG("DiscoveryBeacon", 85) << "\t "
+								<< service.getName() << " [" << service.getParameters() << "]"
+								<< IBRCOMMON_LOGGER_ENDL;
+						}
+						catch (const ibrcommon::Exception& e)
+						{
+							IBRCOMMON_LOGGER_DEBUG_TAG("DiscoveryBeacon", 60) << e.what()
+								<< IBRCOMMON_LOGGER_ENDL;
+						}
 					}
 				}
 
@@ -401,7 +444,7 @@ namespace dtn
 				break;
 			}
 
-			case DiscoveryBeacon::DTND_IPDISCOVERY:
+			case Discovery::DTND_IPDISCOVERY:
 			{
 				uint8_t cl_type;
 				uint8_t interval;
@@ -422,7 +465,7 @@ namespace dtn
 				std::vector<char> eid(eid_len);
 				stream.read(&eid[0], eid.size());
 
-				announcement._version = DiscoveryBeacon::DTND_IPDISCOVERY;
+				announcement._version = Discovery::DTND_IPDISCOVERY;
 				announcement._canonical_eid = dtn::data::EID(std::string(eid.begin(), eid.end()));
 
 				break;
