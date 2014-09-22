@@ -159,3 +159,8 @@ void IPNDTest::testDraft01SelfAcceptance()
 {
 	testSelfAcceptance(dtn::net::Discovery::DISCO_VERSION_01);
 }
+
+void IPNDTest::testDraft02SelfAcceptance()
+{
+	testSelfAcceptance(dtn::net::Discovery::DISCO_VERSION_02);
+}

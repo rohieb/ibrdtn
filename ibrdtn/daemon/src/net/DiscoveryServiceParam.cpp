@@ -24,11 +24,32 @@
 #include <ibrdtn/utils/Utils.h>
 #include <stdexcept>
 #include <cstring>
+#include <cmath>
 
 namespace dtn
 {
 	namespace net
 	{
+
+		/** Helper to convert from double to string representation */
+		std::string doubleToString(const double& d)
+		{
+			std::ostringstream ss;
+			ss.imbue(std::locale("C")); // take care of the decimal separator
+			ss << std::dec << d;
+			return ss.str();
+		}
+
+		/** Helper to convert to double from string representation */
+		double doubleFromString(const std::string& str)
+		{
+			double d;
+			std::istringstream ss(str);
+			ss.imbue(std::locale("C")); // take care of the decimal separator
+			ss >> std::dec >> d;
+			return d;
+		}
+
 		/**
 		 * Dispatcher to the leaf classes' operator==()
 		 * @throws std::invalid_argument if lhs and rhs are different types
@@ -281,10 +302,37 @@ namespace dtn
 			return false;
 		}
 
+		const uint8_t IPServiceParam::getIPNDServiceTag(dtn::core::Node::Protocol proto) const throw (IllegalServiceException)
+		{
+			if      (isIPv4Address() && proto == dtn::core::Node::CONN_UDPIP)
+				return ipnd::CLA_UDP_v4::Tag;
+			else if (isIPv4Address() && proto == dtn::core::Node::CONN_TCPIP)
+				return ipnd::CLA_TCP_v4::Tag;
+			else if (isIPv6Address() && proto == dtn::core::Node::CONN_UDPIP)
+				return ipnd::CLA_UDP_v6::Tag;
+			else if (isIPv6Address() && proto == dtn::core::Node::CONN_TCPIP)
+				return ipnd::CLA_TCP_v6::Tag;
+			throw IllegalServiceException("unknown protocol");
+		}
+
 		dtn::data::Length IPServiceParam::getLength(Discovery::Protocol version) const
 		{
 			switch (version)
 			{
+				case Discovery::DISCO_VERSION_02:
+				{
+					if (isIPv4Address())
+					{
+						return 1 + ipnd::FIXED32::Length  /* ipv4 tag + value */
+						     + 1 + ipnd::FIXED16::Length; /* port tag + value */
+					}
+					else if (isIPv6Address())
+					{
+						return 2 + 16                     /* ipv6 tag + length + value */
+						     + 1 + ipnd::FIXED16::Length; /* port tag + value */
+					}
+					return 0;
+				}
 				case Discovery::DISCO_VERSION_01:
 				case Discovery::DISCO_VERSION_00:
 				{
@@ -313,6 +361,33 @@ namespace dtn
 			std::ostringstream ss;
 			switch (version)
 			{
+				case Discovery::DISCO_VERSION_02:
+				{
+					// address
+					if (isIPv4Address())
+					{
+						in_addr ia;
+						inet_pton(AF_INET, _address.c_str(), &ia);
+						ipnd::write<ipnd::FIXED32>(ss, ia.s_addr);
+					}
+					else if (isIPv6Address())
+					{
+						in6_addr ia;
+						inet_pton(AF_INET6, _address.c_str(), &ia);
+						dtn::data::BundleString saddr(std::string((char *) ia.s6_addr, 16));
+						ipnd::write<ipnd::BYTES>(ss, saddr);
+					}
+					else // in case someone does something nasty
+					{
+						ipnd::write<ipnd::FIXED32>(ss, 0);
+					}
+
+					// port
+					ipnd::write<ipnd::FIXED16>(ss, htons(_port));
+
+					return ss.str();
+				}
+
 				case Discovery::DISCO_VERSION_01:
 				case Discovery::DISCO_VERSION_00:
 				{
@@ -333,8 +408,74 @@ namespace dtn
 		 *  Discovery::DTND_IPDISCOVERY (no service information specified in
 		 *  protocol)
 		 */
-		DiscoveryServiceParam * IPServiceParam::unpack(std::istream& stream, Discovery::Protocol version) throw (ParseException, IllegalServiceException, WrongVersionException)
+		DiscoveryServiceParam * IPServiceParam::unpack(std::istream& stream, Discovery::Protocol version, const uint8_t tag = ipnd::CLA_TCP_v4::Tag) throw (ParseException, IllegalServiceException, WrongVersionException)
 		{
+			size_t bytes_read = 0;
+			switch (version)
+			{
+				case Discovery::DISCO_VERSION_02:
+				{
+					std::string address;
+					uint16_t port;
+
+					// address
+					try
+					{
+						if (tag == ipnd::CLA_TCP_v4::Tag || tag == ipnd::CLA_UDP_v4::Tag)
+						{
+							in_addr ia;
+							char char_buf[INET_ADDRSTRLEN];
+
+							uint32_t buf;
+							bytes_read += ipnd::read<ipnd::FIXED32>(stream, buf);
+							ia.s_addr = buf;
+							inet_ntop(AF_INET, &ia, char_buf, INET_ADDRSTRLEN);
+							address.assign(char_buf);
+						}
+						else if (tag == ipnd::CLA_TCP_v6::Tag || tag == ipnd::CLA_UDP_v6::Tag)
+						{
+							in6_addr ia;
+							dtn::data::BundleString bundle_string;
+							char char_buf[INET6_ADDRSTRLEN];
+
+							bytes_read += ipnd::read<ipnd::BYTES>(stream, bundle_string);
+
+							if (bundle_string.size() != 16)
+							{
+								throw ParseException("size of IPND BYTES field is not 16", 0);
+							}
+							memcpy(ia.s6_addr, bundle_string.c_str(), 16);
+
+							inet_ntop(AF_INET6, &ia, char_buf, INET6_ADDRSTRLEN);
+							address.assign(char_buf);
+						}
+					}
+					catch (const ParseException& e)
+					{
+						std::ostringstream err;
+						err << "could not read IP address for IPND draft 02: "
+							<< e.what();
+						throw ParseException(err.str(), bytes_read + e.getBytesRead());
+					}
+
+					// port
+					try
+					{
+						bytes_read += ipnd::read<ipnd::FIXED16>(stream, port);
+						port = ntohs(port);
+					}
+					catch (const ParseException& e)
+					{
+						std::ostringstream err;
+						err << "could not read port for IPND draft 02 tag " << (int) tag
+							<< ": " << e.what();
+						throw ParseException(err.str(), bytes_read + e.getBytesRead());
+					}
+
+					return new IPServiceParam(address, port);
+				}
+			}
+
 			std::ostringstream err;
 			err << std::hex << (int) version;
 			throw WrongVersionException(err.str());
@@ -370,10 +511,21 @@ namespace dtn
 			return _address == o._address && _port == o._port;
 		}
 
+		const uint8_t LOWPANServiceParam::getIPNDServiceTag(dtn::core::Node::Protocol proto) const throw (IllegalServiceException)
+		{
+			return ipnd::CLA_LOWPAN::Tag;
+		}
+
 		dtn::data::Length LOWPANServiceParam::getLength(Discovery::Protocol version) const
 		{
 			switch (version)
 			{
+				case Discovery::DISCO_VERSION_02:
+				{
+					return 1 + ipnd::FIXED16::Length  /* address tag + value */
+					     + 1 + ipnd::FIXED16::Length; /* port tag + value */
+				}
+
 				case Discovery::DISCO_VERSION_01:
 				case Discovery::DISCO_VERSION_00:
 				{
@@ -398,6 +550,15 @@ namespace dtn
 			std::ostringstream ss;
 			switch (version)
 			{
+				case Discovery::DISCO_VERSION_02:
+				{
+					ipnd::write<ipnd::FIXED16>(ss, htons(_address));
+
+					ipnd::write<ipnd::FIXED16>(ss, htons(_port));
+
+					return ss.str();
+				}
+
 				case Discovery::DISCO_VERSION_01:
 				case Discovery::DISCO_VERSION_00:
 				{
@@ -420,6 +581,44 @@ namespace dtn
 		 */
 		DiscoveryServiceParam * LOWPANServiceParam::unpack(std::istream& stream, Discovery::Protocol version) throw (ParseException, IllegalServiceException, WrongVersionException)
 		{
+			size_t bytes_read = 0;
+			switch (version)
+			{
+				case Discovery::DISCO_VERSION_02:
+				{
+					uint16_t address;
+					uint16_t port;
+
+					// address
+					try
+					{
+						bytes_read += ipnd::read<ipnd::FIXED16>(stream, address);
+						address = ntohs(address);
+					}
+					catch (const ParseException& e)
+					{
+						std::ostringstream err;
+						err << "could not read LOWPAN address: " << e.what();
+						throw ParseException(err.str(), bytes_read + e.getBytesRead());
+					}
+
+					// port
+					try
+					{
+						bytes_read += ipnd::read<ipnd::FIXED16>(stream, port);
+						port = ntohs(port);
+					}
+					catch (const ParseException& e)
+					{
+						std::ostringstream err;
+						err << "could not read port: " << e.what();
+						throw ParseException(err.str(), bytes_read + e.getBytesRead());
+					}
+
+					return new LOWPANServiceParam(address, port);
+				}
+			}
+
 			std::ostringstream err;
 			err << std::hex << (int) version;
 			throw WrongVersionException(err.str());
@@ -454,9 +653,34 @@ namespace dtn
 			return _address == o._address;
 		}
 
+		const uint8_t DatagramServiceParam::getIPNDServiceTag(dtn::core::Node::Protocol proto) const throw (IllegalServiceException)
+		{
+			switch (proto)
+			{
+				case dtn::core::Node::CONN_DGRAM_UDP:
+					return ipnd::CLA_DGRAM_UDP::Tag;
+				case dtn::core::Node::CONN_DGRAM_ETHERNET:
+					return ipnd::CLA_DGRAM_ETHERNET::Tag;
+				case dtn::core::Node::CONN_DGRAM_LOWPAN:
+					return ipnd::CLA_DGRAM_LOWPAN::Tag;
+			}
+			throw IllegalServiceException("unknown protocol");
+		}
+
 		dtn::data::Length DatagramServiceParam::getLength(Discovery::Protocol version) const
 		{
-			return dtn::data::BundleString(_address).getLength();
+			switch (version)
+			{
+				case Discovery::DISCO_VERSION_02:
+				{
+					return 1 + dtn::data::BundleString(_address).getLength(); // + tag
+				}
+				case Discovery::DISCO_VERSION_01:
+				case Discovery::DISCO_VERSION_00:
+				{
+					return dtn::data::BundleString(_address).getLength();
+				}
+			}
 		}
 
 		std::string DatagramServiceParam::pack(Discovery::Protocol version) const throw (WrongVersionException)
@@ -464,6 +688,13 @@ namespace dtn
 			std::ostringstream ss;
 			switch (version)
 			{
+				case Discovery::DISCO_VERSION_02:
+				{
+					ss << (char) ipnd::STRING::Tag;
+					ss << dtn::data::BundleString(_address);
+					return ss.str();
+				}
+
 				case Discovery::DISCO_VERSION_01:
 				case Discovery::DISCO_VERSION_00:
 				{
@@ -481,6 +712,24 @@ namespace dtn
 		{
 			switch (version)
 			{
+				case Discovery::DISCO_VERSION_02:
+				{
+					dtn::data::BundleString address;
+					try
+					{
+						ipnd::read<ipnd::STRING>(stream, address);
+					}
+					catch (const ParseException& e)
+					{
+						std::ostringstream err;
+						err << "could not read datagram address for IPND draft 02: "
+							<< e.what();
+						throw ParseException(err.str(), e.getBytesRead());
+					}
+
+					return new DatagramServiceParam(address);
+				}
+
 				case Discovery::DISCO_VERSION_01:
 				case Discovery::DISCO_VERSION_00:
 				{
@@ -535,10 +784,19 @@ namespace dtn
 			return kv.str();
 		}
 
+		const uint8_t EMailServiceParam::getIPNDServiceTag(dtn::core::Node::Protocol proto) const throw (IllegalServiceException)
+		{
+			return ipnd::CLA_EMAIL::Tag;
+		}
+
 		dtn::data::Length EMailServiceParam::getLength(Discovery::Protocol version) const
 		{
 			switch (version)
 			{
+				case Discovery::DISCO_VERSION_02:
+				{
+					return dtn::data::BundleString(_address).getLength() + 1; // + tag
+				}
 				case Discovery::DISCO_VERSION_01:
 				case Discovery::DISCO_VERSION_00:
 				{
@@ -553,6 +811,12 @@ namespace dtn
 			std::ostringstream ss;
 			switch (version)
 			{
+				case Discovery::DISCO_VERSION_02:
+				{
+					ss << (char) ipnd::STRING::Tag;
+					ss << dtn::data::BundleString(_address);
+					return ss.str();
+				}
 				case Discovery::DISCO_VERSION_01:
 				case Discovery::DISCO_VERSION_00:
 				{
@@ -575,6 +839,27 @@ namespace dtn
 		 */
 		DiscoveryServiceParam * EMailServiceParam::unpack(std::istream& stream, Discovery::Protocol version) throw (ParseException, IllegalServiceException, WrongVersionException)
 		{
+			switch (version)
+			{
+				case Discovery::DISCO_VERSION_02:
+				{
+					dtn::data::BundleString address;
+					try
+					{
+						ipnd::read<ipnd::STRING>(stream, address);
+					}
+					catch (const ParseException& e)
+					{
+						std::ostringstream err;
+						err << "could not read e-mail address for IPND draft 02:"
+							<< e.what();
+						throw ParseException(err.str(), e.getBytesRead());
+					}
+
+					return new EMailServiceParam(address);
+				}
+			}
+
 			std::ostringstream err;
 			err << std::hex << version;
 			throw WrongVersionException(err.str());
@@ -624,10 +909,21 @@ namespace dtn
 			return kv.str();
 		}
 
+		const uint8_t DHTServiceParam::getIPNDServiceTag(dtn::core::Node::Protocol proto) const throw (IllegalServiceException)
+		{
+			return ipnd::CLA_DHT::Tag;
+		}
+
 		dtn::data::Length DHTServiceParam::getLength(Discovery::Protocol version) const
 		{
 			switch (version)
 			{
+				case Discovery::DISCO_VERSION_02:
+				{
+					return 1 + ipnd::FIXED16::Length // port tag + value
+					     + 1 + ipnd::BOOLEAN::Length // proxy tag + value
+					     ;
+				}
 				case Discovery::DISCO_VERSION_01:
 				case Discovery::DISCO_VERSION_00:
 				{
@@ -642,6 +938,16 @@ namespace dtn
 			std::ostringstream ss;
 			switch (version)
 			{
+				case Discovery::DISCO_VERSION_02:
+				{
+					// port
+					ipnd::write<ipnd::FIXED16>(ss, htons(_port));
+
+					// proxy
+					ipnd::write<ipnd::BOOLEAN>(ss, _proxy);
+
+					return ss.str();
+				}
 				case Discovery::DISCO_VERSION_01:
 				case Discovery::DISCO_VERSION_00:
 				{
@@ -657,8 +963,44 @@ namespace dtn
 		/** @see DiscoveryServiceParam::unpack() */
 		DiscoveryServiceParam * DHTServiceParam::unpack(std::istream& stream, Discovery::Protocol version) throw (ParseException, IllegalServiceException, WrongVersionException)
 		{
+			size_t bytes_read = 0;
 			switch (version)
 			{
+				case Discovery::DISCO_VERSION_02:
+				{
+					uint16_t port;
+					bool proxy;
+
+					// port
+					try
+					{
+						bytes_read += ipnd::read<ipnd::FIXED16>(stream, port);
+						port = ntohs(port);
+					}
+					catch (const ParseException& e)
+					{
+						std::ostringstream err;
+						err << "could not read DHT port for IPND draft 02: "
+							<< e.what();
+						throw ParseException(err.str(), bytes_read + e.getBytesRead());
+					}
+
+					// proxy
+					try
+					{
+						bytes_read += ipnd::read<ipnd::BOOLEAN>(stream, proxy);
+					}
+					catch (const ParseException& e)
+					{
+						std::ostringstream err;
+						err << "could not read DHT proxy field for IPND draft 02: "
+							<< e.what();
+						throw ParseException(err.str(), bytes_read + e.getBytesRead());
+					}
+
+					return new DHTServiceParam(port, proxy);
+				}
+
 				case Discovery::DISCO_VERSION_01:
 				case Discovery::DISCO_VERSION_00:
 				{
@@ -756,10 +1098,23 @@ namespace dtn
 			return kv.str();
 		}
 
+		const uint8_t DTNTPServiceParam::getIPNDServiceTag(dtn::core::Node::Protocol proto) const throw (IllegalServiceException)
+		{
+			return ipnd::CLA_DTNTP::Tag;
+		}
+
 		dtn::data::Length DTNTPServiceParam::getLength(Discovery::Protocol version) const
 		{
 			switch (version)
 			{
+				case Discovery::DISCO_VERSION_02:
+				{
+					// length(tags) + length(values)
+					return 1 + dtn::data::Number(_version).getLength()
+					     + 1 + dtn::data::BundleString(doubleToString(_quality)).getLength();
+					     + 1 + dtn::data::Number(_timestamp).getLength()
+					     ;
+				}
 				case Discovery::DISCO_VERSION_01:
 				case Discovery::DISCO_VERSION_00:
 				{
@@ -774,6 +1129,23 @@ namespace dtn
 			std::ostringstream ss;
 			switch (version)
 			{
+				case Discovery::DISCO_VERSION_02:
+				{
+					// version
+					ipnd::write<ipnd::UINT64>(ss, dtn::data::Number(_version));
+
+					// quality
+					// string conversion as a portable double representation
+					// (what could possibly go wrong?)
+					const std::string num = doubleToString(_quality);
+					ipnd::write<ipnd::STRING>(ss, dtn::data::BundleString(num));
+
+					// timestamp
+					ipnd::write<ipnd::UINT64>(ss, dtn::data::Number(_timestamp));
+
+					return ss.str();
+				}
+
 				case Discovery::DISCO_VERSION_01:
 				case Discovery::DISCO_VERSION_00:
 				{
@@ -796,6 +1168,63 @@ namespace dtn
 		 */
 		DiscoveryServiceParam * DTNTPServiceParam::unpack(std::istream& stream, Discovery::Protocol version) throw (ParseException, IllegalServiceException, WrongVersionException)
 		{
+			size_t bytes_read = 0;
+			switch (version)
+			{
+				case Discovery::DISCO_VERSION_02:
+				{
+					dtn::data::Number dtntp_version;
+					double quality;
+					dtn::data::Number timestamp;
+
+					// version
+					try
+					{
+						bytes_read += ipnd::read<ipnd::UINT64>(stream, dtntp_version);
+					}
+					catch (const ParseException& e)
+					{
+						std::ostringstream err;
+						err << "could not read DTNTP version for IPND draft 02: "
+							<< e.what();
+						throw ParseException(err.str(), bytes_read + e.getBytesRead());
+					}
+
+					// quality
+					try
+					{
+						// string conversion as a portable double representation
+						// (what could possibly go wrong?)
+						dtn::data::BundleString num;
+						bytes_read += ipnd::read<ipnd::STRING>(stream, num);
+						quality = doubleFromString(num);
+					}
+					catch (const ParseException& e)
+					{
+						std::ostringstream err;
+						err << "could not read DTNTP quality for IPND draft 02: "
+							<< e.what();
+						throw ParseException(err.str(), bytes_read + e.getBytesRead());
+					}
+
+					// timestamp
+					try
+					{
+						bytes_read += ipnd::read<ipnd::UINT64>(stream, timestamp);
+					}
+					catch (const ParseException& e)
+					{
+						std::ostringstream err;
+						err << "could not read DTNTP timestamp for IPND draft 02: "
+							<< e.what();
+						throw ParseException(err.str(), bytes_read + e.getBytesRead());
+					}
+
+					return new DTNTPServiceParam(dtntp_version.get(), quality,
+							timestamp.get());
+				}
+			}
+
 			std::ostringstream err;
 			err << std::hex << version;
 			throw WrongVersionException(err.str());

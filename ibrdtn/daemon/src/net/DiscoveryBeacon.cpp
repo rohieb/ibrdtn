@@ -248,6 +248,61 @@ namespace dtn
 					break;
 				}
 
+				case Discovery::DISCO_VERSION_02:
+				{
+					unsigned char flags = 0;
+
+					// Version
+					stream << (unsigned char) Discovery::DISCO_VERSION_02;
+
+					// Flags
+					if (announcement._canonical_eid != dtn::data::EID())
+					{
+						flags |= DiscoveryBeacon::BEACON_CONTAINS_EID;
+					}
+					if (announcement._period > 1)
+					{
+						flags |= DiscoveryBeacon::BEACON_CONTAINS_PERIOD;
+					}
+					if (!services.empty())
+					{
+						flags |= DiscoveryBeacon::BEACON_SERVICE_BLOCK;
+					}
+
+					stream << flags;
+
+					// Beacon Sequence Number
+					const uint16_t sn = htons(announcement._sn);
+					stream.write((const char *) &sn, 2);
+					
+					// EID Length and Canonical EID
+					if (flags & DiscoveryBeacon::BEACON_CONTAINS_EID)
+					{
+						const dtn::data::BundleString eid(announcement._canonical_eid.getString());
+						stream << eid;
+					}
+
+					// Service Block
+					if (flags & DiscoveryBeacon::BEACON_SERVICE_BLOCK)
+					{
+						stream << dtn::data::Number(services.size());
+
+						dtn::net::DiscoveryBeacon::service_list::const_iterator srv;
+						for (srv = services.begin(); srv != services.end(); ++srv)
+						{
+							stream << (*srv).pack(Discovery::DISCO_VERSION_02);
+						}
+					}
+
+					// Beacon Period
+					if (flags & DiscoveryBeacon::BEACON_CONTAINS_PERIOD)
+					{
+						stream << announcement._period;
+					}
+
+					break;
+				}
+
 				case Discovery::DTND_IPDISCOVERY:
 				{
 					uint8_t cl_type = 1;
@@ -438,6 +493,87 @@ namespace dtn
 				if (announcement._flags & DiscoveryBeacon::BEACON_CONTAINS_PERIOD)
 				{
 					// read appended beacon period
+					stream >> announcement._period;
+				}
+
+				break;
+			}
+
+			case Discovery::DISCO_VERSION_02:
+			{
+				IBRCOMMON_LOGGER_DEBUG_TAG("DiscoveryBeacon", 60)
+					<< "beacon version 3 received" << IBRCOMMON_LOGGER_ENDL;
+
+				// Flags
+				stream.get((char&) announcement._flags);
+
+				IBRCOMMON_LOGGER_DEBUG_TAG("DiscoveryBeacon", 85) << "beacon flags: "
+					<< std::hex << (int) announcement._flags << IBRCOMMON_LOGGER_ENDL;
+
+				// Sequence number
+				uint16_t sn = 0;
+				stream.read((char *) &sn, 2);
+
+				uint16_t sequencenumber = ntohs(sn);
+
+				IBRCOMMON_LOGGER_DEBUG_TAG("DiscoveryBeacon", 85)
+					<< "beacon sequence number: " << sequencenumber
+					<< IBRCOMMON_LOGGER_ENDL;
+
+				// EID Length and Canonical EID
+				if (announcement._flags & DiscoveryBeacon::BEACON_CONTAINS_EID)
+				{
+					dtn::data::BundleString eid;
+					stream >> eid;
+
+					announcement._canonical_eid = dtn::data::EID((const std::string&) eid);
+
+					IBRCOMMON_LOGGER_DEBUG_TAG("DiscoveryBeacon", 85) << "beacon eid: "
+						<< (std::string) eid << IBRCOMMON_LOGGER_ENDL;
+				}
+
+
+				// Service Block
+				if (announcement._flags & DiscoveryBeacon::BEACON_SERVICE_BLOCK)
+				{
+					// get the services
+					dtn::net::DiscoveryBeacon::service_list &services = announcement._services;
+
+					// read the number of services
+					dtn::data::Number num_services;
+					stream >> num_services;
+
+					IBRCOMMON_LOGGER_DEBUG_TAG("DiscoveryBeacon", 85)
+						<< "beacon services (" << num_services.toString() << "): "
+						<< IBRCOMMON_LOGGER_ENDL;
+
+					// clear the services
+					services.clear();
+
+					for (unsigned int i = 0; num_services > i; ++i)
+					{
+						// decode the service blocks
+						DiscoveryService service;
+						try
+						{
+							service.unpack(stream, version);
+							services.push_back(service);
+
+							IBRCOMMON_LOGGER_DEBUG_TAG("DiscoveryBeacon", 85) << "\t "
+								<< service.getName() << " [" << service.getParameters() << "]"
+								<< IBRCOMMON_LOGGER_ENDL;
+						}
+						catch (ibrcommon::Exception& e)
+						{
+							IBRCOMMON_LOGGER_TAG("DiscoveryBeacon", notice) << e.what()
+								<< IBRCOMMON_LOGGER_ENDL;
+						}
+					}
+				}
+
+				// Beacon Period
+				if (announcement._flags & DiscoveryBeacon::BEACON_CONTAINS_PERIOD)
+				{
 					stream >> announcement._period;
 				}
 

@@ -87,6 +87,20 @@ namespace dtn
 			dtn::data::Number length;
 			switch (version)
 			{
+				case Discovery::DISCO_VERSION_02:
+				{
+					if (_param)
+					{
+						length = _param->getLength(Discovery::DISCO_VERSION_02);
+						return 1               // tag
+							+ length.getLength() // length
+							+ length.get();      // value
+					}
+					else
+					{
+						return 0;
+					}
+				}
 				case Discovery::DISCO_VERSION_01:
 				case Discovery::DISCO_VERSION_00:
 				{
@@ -254,6 +268,30 @@ namespace dtn
 
 			switch (version)
 			{
+				case Discovery::DISCO_VERSION_02:
+				{
+					if (!_param)
+					{
+						throw IllegalServiceException("cannot announce a service without "
+								"parameters");
+					}
+
+					try
+					{
+						ss << static_cast<char>(_param->getIPNDServiceTag(_service_protocol)); // tag
+						ss << dtn::data::Number(_param->getLength(version)); // length
+						ss << _param->pack(version);  // value
+					}
+					catch (WrongVersionException& e)
+					{
+						std::stringstream err;
+						err << "Unknown protocol " << _service_protocol;
+						throw IllegalServiceException(err.str());
+					}
+
+					break;
+				}
+
 				case Discovery::DISCO_VERSION_01:
 				case Discovery::DISCO_VERSION_00:
 				{
@@ -303,6 +341,157 @@ namespace dtn
 
 			switch (version)
 			{
+				case Discovery::DISCO_VERSION_02:
+				{
+					uint8_t tag;
+					stream.read((char *) &tag, 1);
+					bytes_read += 1;
+					if (!stream.good())
+					{
+						throw ParseException("could not read IPND draft 02 service tag",
+								bytes_read);
+					}
+
+					dtn::data::Number length;
+					stream >> length;
+					bytes_read += length.getLength();
+					if (!stream.good())
+					{
+						throw ParseException("could not read IPND draft 02 service length",
+								bytes_read);
+					}
+
+					// set service protocol
+					switch (tag)
+					{
+						case ipnd::CLA_TCP_v4::Tag:
+						case ipnd::CLA_TCP_v6::Tag:
+						{
+							_service_protocol = dtn::core::Node::CONN_TCPIP;
+							break;
+						}
+						case ipnd::CLA_UDP_v6::Tag:
+						case ipnd::CLA_UDP_v4::Tag:
+						{
+							_service_protocol = dtn::core::Node::CONN_UDPIP;
+							break;
+						}
+						case ipnd::CLA_DGRAM_ETHERNET::Tag:
+						{
+							_service_protocol = dtn::core::Node::CONN_DGRAM_ETHERNET;
+							break;
+						}
+						case ipnd::CLA_DGRAM_UDP::Tag:
+						{
+							_service_protocol = dtn::core::Node::CONN_DGRAM_UDP;
+							break;
+						}
+						case ipnd::CLA_DGRAM_LOWPAN::Tag:
+						{
+							_service_protocol = dtn::core::Node::CONN_DGRAM_LOWPAN;
+							break;
+						}
+						case ipnd::CLA_LOWPAN::Tag:
+						{
+							_service_protocol = dtn::core::Node::CONN_LOWPAN;
+							break;
+						}
+						case ipnd::CLA_EMAIL::Tag:
+						{
+							_service_protocol = dtn::core::Node::CONN_EMAIL;
+							break;
+						}
+						case ipnd::CLA_DHT::Tag:
+						{
+							_service_protocol = dtn::core::Node::CONN_DHT;
+							break;
+						}
+						case ipnd::CLA_DTNTP::Tag:
+						{
+							_service_protocol = dtn::core::Node::CONN_DTNTP;
+							break;
+						}
+						default:
+						{
+							std::ostringstream err;
+							err << "ignoring unknown IPND draft 02 service tag " << (int) tag;
+							stream.seekg(length.get(), std::ios_base::cur);
+							bytes_read += length.get();
+							throw ParseException(err.str(), bytes_read);
+						}
+					}
+
+					// set param
+					try
+					{
+						switch (tag)
+						{
+							case ipnd::CLA_TCP_v4::Tag:
+							case ipnd::CLA_UDP_v4::Tag:
+							case ipnd::CLA_TCP_v6::Tag:
+							case ipnd::CLA_UDP_v6::Tag:
+							{
+								if (length != 2 + ipnd::FIXED32::Length + ipnd::FIXED16::Length &&
+								    length != 2 + 1 + 16 + ipnd::FIXED16::Length)
+								{
+									std::ostringstream err;
+									err << "expected length " << ipnd::CLA_TCP_v4::Length
+										<< " or " << ipnd::CLA_TCP_v6::Length << ", got " << length
+										<< " for IPND draft 02 tag " << (int) tag;
+									throw ParseException(err.str(), bytes_read);
+								}
+
+								param = IPServiceParam::unpack(stream, version, tag);
+								break;
+							}
+
+							case ipnd::CLA_DGRAM_UDP::Tag:
+							case ipnd::CLA_DGRAM_ETHERNET::Tag:
+							case ipnd::CLA_DGRAM_LOWPAN::Tag:
+							{
+								param = DatagramServiceParam::unpack(stream, version);
+								break;
+							}
+
+							case ipnd::CLA_LOWPAN::Tag:
+							{
+								param = LOWPANServiceParam::unpack(stream, version);
+								break;
+							}
+
+							case ipnd::CLA_EMAIL::Tag:
+							{
+								param = EMailServiceParam::unpack(stream, version);
+								break;
+							}
+
+							case ipnd::CLA_DHT::Tag:
+							{
+								param = DHTServiceParam::unpack(stream, version);
+								break;
+							}
+
+							case ipnd::CLA_DTNTP::Tag:
+							{
+								param = DTNTPServiceParam::unpack(stream, version);
+								break;
+							}
+
+							// default: has already thrown above, unless we forgot something
+						} // end switch (tag)
+					}
+					catch (ibrcommon::Exception&)
+					{
+						throw;
+					}
+
+					delete _param;
+					_param = param; // only here so we can catch exceptions
+					bytes_read += _param->getLength(version);
+
+					return *this;
+				}
+
 				case Discovery::DISCO_VERSION_01:
 				case Discovery::DISCO_VERSION_00:
 				{

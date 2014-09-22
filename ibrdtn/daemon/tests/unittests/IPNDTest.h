@@ -48,6 +48,7 @@ class IPNDTest : public CppUnit::TestFixture {
 		void testSelfAcceptance(dtn::net::Discovery::Protocol version);
 		void testDraft00SelfAcceptance();
 		void testDraft01SelfAcceptance();
+		void testDraft02SelfAcceptance();
 
 		void setUp();
 		void tearDown();
@@ -56,6 +57,7 @@ class IPNDTest : public CppUnit::TestFixture {
 		CPPUNIT_TEST(testServiceInterface);
 		CPPUNIT_TEST(testDraft00SelfAcceptance);
 		CPPUNIT_TEST(testDraft01SelfAcceptance);
+		CPPUNIT_TEST(testDraft02SelfAcceptance);
 		CPPUNIT_TEST_SUITE_END();
 };
 #endif /* IPNDTEST_HH */

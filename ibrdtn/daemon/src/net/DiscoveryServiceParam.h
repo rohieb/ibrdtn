@@ -22,6 +22,7 @@
 #define DISCOVERYSERVICEPARAM_H_
 
 #include "net/Discovery.h"
+#include "core/Node.h"
 #include <ibrdtn/data/Number.h>
 #include <iostream>
 #include <string>
@@ -53,6 +54,9 @@ namespace dtn
 			 * returned by @c DiscoveryServiceParam::pack(version).
 			 */
 			virtual dtn::data::Length getLength(Discovery::Protocol version) const = 0;
+
+			/** @return service tag for IPND Draft 02 TLV entities */
+			virtual const uint8_t getIPNDServiceTag(dtn::core::Node::Protocol proto) const = 0;
 
 			/**
 			 * Generate a byte representation for the specified protocol version.
@@ -138,9 +142,10 @@ namespace dtn
 			virtual DiscoveryServiceParam * clone() const;
 			virtual DiscoveryServiceParam& operator=(const IPServiceParam& o);
 			virtual bool operator==(const IPServiceParam& o) const;
+			virtual const uint8_t getIPNDServiceTag(dtn::core::Node::Protocol proto) const throw (IllegalServiceException);
 			virtual dtn::data::Length getLength(Discovery::Protocol version) const;
 			virtual std::string pack(Discovery::Protocol version) const throw (WrongVersionException, IllegalServiceException);
-			static DiscoveryServiceParam * unpack(std::istream& stream, Discovery::Protocol version) throw (ParseException, IllegalServiceException, WrongVersionException);
+			static DiscoveryServiceParam * unpack(std::istream& stream, Discovery::Protocol version, const uint8_t tag) throw (ParseException, IllegalServiceException, WrongVersionException);
 		};
 
 /******************************************************************************/
@@ -163,6 +168,7 @@ namespace dtn
 			virtual DiscoveryServiceParam& operator=(const LOWPANServiceParam& o);
 			virtual bool operator==(const LOWPANServiceParam& o) const;
 			virtual dtn::data::Length getLength(Discovery::Protocol version) const;
+			virtual const uint8_t getIPNDServiceTag(dtn::core::Node::Protocol proto) const throw (IllegalServiceException);
 			virtual std::string pack(Discovery::Protocol version) const throw (WrongVersionException);
 			static DiscoveryServiceParam * unpack(std::istream& stream, Discovery::Protocol version) throw (ParseException, IllegalServiceException, WrongVersionException);
 		};
@@ -183,6 +189,7 @@ namespace dtn
 			virtual DiscoveryServiceParam& operator=(const DatagramServiceParam& o);
 			virtual bool operator==(const DatagramServiceParam& o) const;
 			virtual dtn::data::Length getLength(Discovery::Protocol version) const;
+			virtual const uint8_t getIPNDServiceTag(dtn::core::Node::Protocol proto) const throw (IllegalServiceException);
 			virtual std::string pack(Discovery::Protocol version) const throw (WrongVersionException);
 			static DiscoveryServiceParam * unpack(std::istream& stream, Discovery::Protocol version) throw (ParseException, IllegalServiceException, WrongVersionException);
 		};
@@ -206,6 +213,7 @@ namespace dtn
 			virtual DiscoveryServiceParam& operator=(const EMailServiceParam& o);
 			virtual bool operator==(const EMailServiceParam& o) const;
 			virtual dtn::data::Length getLength(Discovery::Protocol version) const;
+			virtual const uint8_t getIPNDServiceTag(dtn::core::Node::Protocol proto) const throw (IllegalServiceException);
 			virtual std::string pack(Discovery::Protocol version) const throw (WrongVersionException);
 			static DiscoveryServiceParam * unpack(std::istream& stream, Discovery::Protocol version) throw (ParseException, IllegalServiceException, WrongVersionException);
 		};
@@ -230,6 +238,7 @@ namespace dtn
 			virtual DiscoveryServiceParam& operator=(const DHTServiceParam& o);
 			virtual bool operator==(const DHTServiceParam& o) const;
 			virtual dtn::data::Length getLength(Discovery::Protocol version) const;
+			virtual const uint8_t getIPNDServiceTag(dtn::core::Node::Protocol proto) const throw (IllegalServiceException);
 			virtual std::string pack(Discovery::Protocol version) const throw (WrongVersionException);
 			static DiscoveryServiceParam * unpack(std::istream& stream, Discovery::Protocol version) throw (ParseException, IllegalServiceException, WrongVersionException);
 		};
@@ -255,6 +264,7 @@ namespace dtn
 			virtual DiscoveryServiceParam& operator=(const DTNTPServiceParam& o);
 			virtual bool operator==(const DTNTPServiceParam& o) const;
 			virtual dtn::data::Length getLength(Discovery::Protocol version) const;
+			virtual const uint8_t getIPNDServiceTag(dtn::core::Node::Protocol proto) const throw (IllegalServiceException);
 			virtual std::string pack(Discovery::Protocol version) const throw (WrongVersionException);
 			static DiscoveryServiceParam * unpack(std::istream& stream, Discovery::Protocol version) throw (ParseException, IllegalServiceException, WrongVersionException);
 		};

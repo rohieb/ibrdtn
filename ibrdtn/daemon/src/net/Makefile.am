@@ -11,6 +11,7 @@ net_SOURCES = 	BundleReceivedEvent.cpp \
 	ConnectionManager.h \
 	ConvergenceLayer.cpp \
 	ConvergenceLayer.h \
+	Discovery.cpp \
 	Discovery.h \
 	DiscoveryAgent.cpp \
 	DiscoveryAgent.h \

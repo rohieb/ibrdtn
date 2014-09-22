@@ -163,6 +163,10 @@ namespace dtn
 
 			switch (_config.version())
 			{
+			case 3:
+				version = Discovery::DISCO_VERSION_02;
+				break;
+
 			case 2:
 				version = Discovery::DISCO_VERSION_01;
 				break;
