@@ -121,6 +121,19 @@ namespace dtn
 			/** Build a IPND draft 00/01 parameter string */
 			std::string buildParamString() const;
 
+			/** Determine whether this contains an IPv4 address */
+			inline bool isIPv4Address() const
+			{
+					return (_address.find(".") != std::string::npos &&
+					        _address.size() <= INET_ADDRSTRLEN);
+			}
+			/** Determine whether this contains an IPv6 address */
+			inline bool isIPv6Address() const
+			{
+				return (_address.find(":") != std::string::npos &&
+			          _address.size() <= INET6_ADDRSTRLEN);
+			}
+
 			// virtual from DiscoveryServiceParam
 			virtual DiscoveryServiceParam * clone() const;
 			virtual DiscoveryServiceParam& operator=(const IPServiceParam& o);

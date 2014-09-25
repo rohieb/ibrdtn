@@ -247,7 +247,38 @@ namespace dtn
 
 		bool IPServiceParam::operator==(const IPServiceParam& o) const
 		{
-			return _address == o._address && _port == o._port;
+			if (_port == o._port)
+			{
+				if (isIPv4Address())
+				{
+					in_addr ia, oia;
+					if (inet_pton(AF_INET, _address.c_str(), &ia) == 1)
+					{
+						if (inet_pton(AF_INET, o._address.c_str(), &oia) == 1)
+						{
+							return ia.s_addr == oia.s_addr;
+						}
+					}
+					return false;
+				}
+				else if (isIPv6Address())
+				{
+					in6_addr ia, oia;
+					if (inet_pton(AF_INET6, _address.c_str(), &ia) == 1)
+					{
+						if (inet_pton(AF_INET6, o._address.c_str(), &oia) == 1);
+						{
+							return (memcmp(ia.s6_addr, oia.s6_addr, 16) == 0);
+						}
+					}
+					return false;
+				}
+				else // address might be empty
+				{
+					return _address == o._address;
+				}
+			}
+			return false;
 		}
 
 		dtn::data::Length IPServiceParam::getLength(Discovery::Protocol version) const
@@ -712,8 +743,8 @@ namespace dtn
 
 		bool DTNTPServiceParam::operator==(const DTNTPServiceParam& o) const
 		{
-			return _version == o._version && _quality == o._quality
-				&& _timestamp == o._timestamp;
+			return _version == o._version && _timestamp == o._timestamp &&
+				fabs(_quality - o._quality) < 0.0001;
 		}
 
 		std::string DTNTPServiceParam::buildParamString() const
