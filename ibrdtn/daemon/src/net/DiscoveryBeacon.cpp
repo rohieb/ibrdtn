@@ -297,7 +297,7 @@ namespace dtn
 
 		std::istream &operator>>(std::istream &stream, DiscoveryBeacon &announcement)
 		{
-			unsigned char version = 0;
+			Discovery::Protocol version;
 
 			// do we running DTN2 compatibility mode?
 			if (announcement._version == Discovery::DTND_IPDISCOVERY)
@@ -308,7 +308,7 @@ namespace dtn
 			else
 			{
 				// read IPND version of the frame
-				version = (unsigned char)stream.get();
+				version = (Discovery::Protocol)((unsigned char)stream.get());
 			}
 
 			switch (version)
@@ -351,9 +351,9 @@ namespace dtn
 					try
 					{
 						DiscoveryService service;
-						service.unpack(stream, announcement._version);
+						service.unpack(stream, version);
 						services.push_back(service);
-						len = service.getLength(announcement._version);
+						len = service.getLength(version);
 					}
 					catch (const ibrcommon::Exception& e)
 					{
@@ -413,7 +413,7 @@ namespace dtn
 						DiscoveryService service;
 						try
 						{
-							service.unpack(stream, announcement._version);
+							service.unpack(stream, version);
 							services.push_back(service);
 
 							IBRCOMMON_LOGGER_DEBUG_TAG("DiscoveryBeacon", 85) << "\t "
