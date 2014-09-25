@@ -53,13 +53,13 @@ void IPNDTest::setUp() {
 	param3 = new dtn::net::DatagramServiceParam("198.51.100.23");
 	serv3 = dtn::net::DiscoveryService(dtn::core::Node::CONN_DGRAM_UDP, param3);
 
-	param4 = new dtn::net::LOWPANServiceParam(0xeA5, 1337); // a5 0e, 05 39
+	param4 = new dtn::net::LOWPANServiceParam(0xeA5, 1337); // 0e a5, 05 39
 	serv4 = dtn::net::DiscoveryService(dtn::core::Node::CONN_LOWPAN, param4);
 
 	param5 = new dtn::net::EMailServiceParam("username@example.org");
 	serv5 = dtn::net::DiscoveryService(dtn::core::Node::CONN_EMAIL, param5);
 
-	param6 = new dtn::net::DHTServiceParam(2553, false);
+	param6 = new dtn::net::DHTServiceParam(2553, false); // 09 f9
 	serv6 = dtn::net::DiscoveryService(dtn::core::Node::CONN_DHT, param6);
 
 	param7 = new dtn::net::DTNTPServiceParam(1, 15.63, 1410492227);
@@ -108,7 +108,7 @@ void IPNDTest::testSelfAcceptance(dtn::net::Discovery::Protocol version) {
 
 	DiscoveryBeacon beacon(version, dtn::data::EID("dtn://test.dtn"));
 
-	beacon.setSequencenumber(0xffff);
+	beacon.setSequencenumber(0xfffe);
 	beacon.addService(serv1);
 	beacon.addService(serv2);
 	beacon.addService(serv3);
