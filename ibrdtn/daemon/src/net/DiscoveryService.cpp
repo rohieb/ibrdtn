@@ -35,6 +35,11 @@ namespace dtn
 		{
 		}
 
+		DiscoveryService::DiscoveryService(Discovery::tag_t service_tag)
+		 : service_tag_(service_tag)
+		{
+		}
+
 		DiscoveryService::DiscoveryService(const dtn::core::Node::Protocol p, const std::string &parameters)
 		 : _service_protocol(p), _service_name(asTag(p)), _service_parameters(parameters)
 		{
@@ -47,6 +52,12 @@ namespace dtn
 
 		DiscoveryService::~DiscoveryService()
 		{
+			for (std::list<DiscoveryTypePtr>::iterator it = parameters_.begin();
+			     it != parameters_.end();
+			     it++)
+			{
+				delete (*it).p;
+			}
 		}
 
 		dtn::data::Length DiscoveryService::getLength() const

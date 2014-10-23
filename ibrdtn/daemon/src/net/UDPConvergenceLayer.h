@@ -43,6 +43,11 @@ namespace dtn
 		class UDPConvergenceLayer : public ConvergenceLayer, public dtn::daemon::IndependentComponent, public DiscoveryBeaconHandler, public ibrcommon::LinkManager::EventCallback
 		{
 		public:
+
+			/** IPND draft 02 TLV Service Tags */
+			static const uint8_t UDP_V4_TAG = 65;
+			static const uint8_t UDP_V6_TAG = 67;
+
 			/**
 			 * Constructor
 			 * @param[in] bind_addr The address to bind.

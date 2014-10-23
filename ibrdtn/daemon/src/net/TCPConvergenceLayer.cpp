@@ -37,6 +37,7 @@
 #include <functional>
 #include <list>
 #include <algorithm>
+#include <arpa/inet.h>
 
 #ifdef WITH_TLS
 #include <ibrcommon/ssl/TLSStream.h>
@@ -195,11 +196,18 @@ namespace dtn
 
 			// announce port only if we are bound to any interface
 			if (_interfaces.empty() && (_any_port > 0)) {
-				std::stringstream service;
 				// ... set the port only
-				ibrcommon::MutexLock l(_portmap_lock);
-				service << "port=" << _portmap[iface] << ";";
-				beacon.addService( DiscoveryService(getDiscoveryProtocol(), service.str()));
+				DiscoveryService service4(TCP_V4_TAG);
+				service4.addParameter(new Discovery::Fixed32Field(0, "ip"));
+				service4.addParameter(new Discovery::Fixed16Field(_portmap[iface], "port"));
+				beacon.addService(service4);
+
+				DiscoveryService service6(TCP_V6_TAG);
+				std::string bytes(16, '\0');
+				service6.addParameter(new Discovery::BytesField(bytes, "ip"));
+				service6.addParameter(new Discovery::Fixed16Field(_portmap[iface], "port"));
+				beacon.addService(service6);
+
 				return;
 			}
 
@@ -234,13 +242,31 @@ namespace dtn
 							try {
 								// do not announce non-IP addresses
 								sa_family_t f = addr.family();
-								if ((f != AF_INET) && (f != AF_INET6)) continue;
+								if (f == AF_INET)
+								{
+									in_addr ia;
+									inet_pton(f, addr.address().c_str(), &ia);
 
-								std::stringstream service;
-								// fill in the ip address
-								ibrcommon::MutexLock l(_portmap_lock);
-								service << "ip=" << addr.address() << ";port=" << _portmap[iface] << ";";
-								beacon.addService( DiscoveryService(getDiscoveryProtocol(), service.str()));
+									DiscoveryService service(TCP_V4_TAG);
+									service.addParameter(new Discovery::Fixed32Field(ia.s_addr, "ip"));
+									service.addParameter(new Discovery::Fixed16Field(_portmap[iface], "port"));
+									beacon.addService(service);
+								}
+								else if (f == AF_INET6)
+								{
+									in6_addr ia;
+									inet_pton(f, addr.address().c_str(), &ia);
+
+									DiscoveryService service(TCP_V6_TAG);
+									std::string bytes((char *) &ia.s6_addr, 16);
+									service.addParameter(new Discovery::BytesField(bytes, "ip"));
+									service.addParameter(new Discovery::Fixed16Field(_portmap[iface], "port"));
+									beacon.addService(service);
+								}
+								else
+								{
+									continue;
+								}
 
 								// set the announce mark
 								announced = true;
@@ -257,9 +283,16 @@ namespace dtn
 					if (!announced) {
 						std::stringstream service;
 						// ... set the port only
-						ibrcommon::MutexLock l(_portmap_lock);
-						service << "port=" << _portmap[iface] << ";";
-						beacon.addService( DiscoveryService(getDiscoveryProtocol(), service.str()));
+						DiscoveryService service4(TCP_V4_TAG);
+						service4.addParameter(new Discovery::Fixed32Field(0, "ip"));
+						service4.addParameter(new Discovery::Fixed16Field(_portmap[iface], "port"));
+						beacon.addService(service4);
+
+						DiscoveryService service6(TCP_V6_TAG);
+						std::string bytes(16, '\0');
+						service6.addParameter(new Discovery::BytesField(bytes, "ip"));
+						service6.addParameter(new Discovery::Fixed16Field(_portmap[iface], "port"));
+						beacon.addService(service6);
 					}
 					return;
 				}

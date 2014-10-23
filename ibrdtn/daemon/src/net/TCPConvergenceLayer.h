@@ -55,6 +55,11 @@ namespace dtn
 
 			const static std::string TAG;
 		public:
+
+			/** IPND draft 02 TLV Service Tags */
+			static const uint8_t TCP_V4_TAG = 64;
+			static const uint8_t TCP_V6_TAG = 66;
+
 			/**
 			 * Constructor
 			 * @param[in] bind_addr The address to bind.

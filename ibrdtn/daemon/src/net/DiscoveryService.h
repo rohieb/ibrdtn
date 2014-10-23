@@ -23,9 +23,11 @@
 #define DISCOVERYSERVICE_H_
 
 #include "core/Node.h"
+#include "net/Discovery.h"
 #include <ibrdtn/data/Number.h>
 #include <stdlib.h>
 #include <iostream>
+#include <stdint.h>
 
 namespace dtn
 {
@@ -35,8 +37,9 @@ namespace dtn
 		{
 		public:
 			DiscoveryService();
-			DiscoveryService(const dtn::core::Node::Protocol p, const std::string &parameters);
-			DiscoveryService(const std::string &name, const std::string &parameters);
+			DiscoveryService(Discovery::tag_t service_tag);
+			/**/DiscoveryService(const dtn::core::Node::Protocol p, const std::string &parameters);
+			/**/DiscoveryService(const std::string &name, const std::string &parameters);
 			virtual ~DiscoveryService();
 
 			dtn::data::Length getLength() const;
@@ -56,10 +59,25 @@ namespace dtn
 			static std::string asTag(const dtn::core::Node::Protocol proto);
 			static dtn::core::Node::Protocol asProtocol(const std::string &tag);
 
+			/**
+			 * @param param the DiscoveryService takes ownership of this pointer
+			 */
+			void addParameter(Discovery::Type * param) {
+				parameters_.push_back(DiscoveryTypePtr(param));
+			}
+
 		protected:
-			dtn::core::Node::Protocol _service_protocol;
-			std::string _service_name;
-			std::string _service_parameters;
+			/** hack for putting abstract base class ptrs into a container */
+			struct DiscoveryTypePtr
+			{
+				DiscoveryTypePtr(Discovery::Type * ptr) : p(ptr) {}
+				Discovery::Type * p;
+			};
+			Discovery::tag_t service_tag_;
+			std::list<DiscoveryTypePtr> parameters_;
+			/**/dtn::core::Node::Protocol _service_protocol;
+			/**/std::string _service_name;
+			/**/std::string _service_parameters;
 
 		private:
 			friend std::ostream &operator<<(std::ostream &stream, const DiscoveryService &service);

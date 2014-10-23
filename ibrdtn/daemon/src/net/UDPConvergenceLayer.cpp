@@ -47,7 +47,7 @@
 #include <iostream>
 #include <list>
 #include <vector>
-
+#include <arpa/inet.h>
 
 using namespace dtn::data;
 
@@ -97,10 +97,17 @@ namespace dtn
 		{
 			// announce port only if we are bound to any interface
 			if (_net.isAny()) {
-				std::stringstream service;
-				// ... set the port only
-				service << "port=" << _port << ";";
-				announcement.addService( DiscoveryService(getDiscoveryProtocol(), service.str()));
+				DiscoveryService service4(UDP_V4_TAG);
+				service4.addParameter(new Discovery::Fixed32Field(0, "ip"));
+				service4.addParameter(new Discovery::Fixed16Field(_port, "port"));
+				announcement.addService(service4);
+
+				DiscoveryService service6(UDP_V6_TAG);
+				std::string bytes(16, '\0');
+				service6.addParameter(new Discovery::BytesField(bytes, "ip"));
+				service6.addParameter(new Discovery::Fixed16Field(_port, "port"));
+				announcement.addService(service6);
+
 				return;
 			}
 
@@ -133,12 +140,31 @@ namespace dtn
 					try {
 						// do not announce non-IP addresses
 						sa_family_t f = addr.family();
-						if ((f != AF_INET) && (f != AF_INET6)) continue;
+						if (f == AF_INET)
+						{
+							in_addr ia;
+							inet_pton(f, addr.address().c_str(), &ia);
 
-						std::stringstream service;
-						// fill in the ip address
-						service << "ip=" << addr.address() << ";port=" << _port << ";";
-						announcement.addService( DiscoveryService(getDiscoveryProtocol(), service.str()));
+							DiscoveryService service(UDP_V4_TAG);
+							service.addParameter(new Discovery::Fixed32Field(ia.s_addr, "ip"));
+							service.addParameter(new Discovery::Fixed16Field(_port, "port"));
+							announcement.addService(service);
+						}
+						else if (f == AF_INET6)
+						{
+							in6_addr ia;
+							inet_pton(f, addr.address().c_str(), &ia);
+
+							DiscoveryService service(UDP_V6_TAG);
+							std::string bytes((char *) &ia.s6_addr, 16);
+							service.addParameter(new Discovery::BytesField(bytes, "ip"));
+							service.addParameter(new Discovery::Fixed16Field(_port, "port"));
+							announcement.addService(service);
+						}
+						else
+						{
+							continue;
+						}
 
 						// set the announce mark
 						announced = true;
@@ -153,9 +179,16 @@ namespace dtn
 			// if we still not announced anything...
 			if (!announced) {
 				// announce at least our local port
-				std::stringstream service;
-				service << "port=" << _port << ";";
-				announcement.addService( DiscoveryService(getDiscoveryProtocol(), service.str()));
+				DiscoveryService service6(UDP_V6_TAG);
+				std::string bytes(16, '\0');
+				service6.addParameter(new Discovery::BytesField(bytes, "ip"));
+				service6.addParameter(new Discovery::Fixed16Field(_port, "port"));
+				announcement.addService(service6);
+
+				DiscoveryService service4(UDP_V4_TAG);
+				service4.addParameter(new Discovery::Fixed32Field(0, "ip"));
+				service4.addParameter(new Discovery::Fixed16Field(_port, "port"));
+				announcement.addService(service4);
 			}
 		}
 
