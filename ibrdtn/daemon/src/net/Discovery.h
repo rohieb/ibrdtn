@@ -1,4 +1,6 @@
 // FIXME header
+#ifndef _DISCOVERY_H_
+#define _DISCOVERY_H_
 
 #include "ibrdtn/data/SDNV.h"
 #include "ibrdtn/data/BundleString.h"
@@ -49,7 +51,7 @@ namespace dtn {
 				DTND_IPDISCOVERY = 0x00, /*< Legacy DTND discovery */
 				DISCO_VERSION_00 = 0x01, /*< IPND draft 00 */
 				DISCO_VERSION_01 = 0x02, /*< IPND draft 01 */
-				//DISCO_VERSION_02 = 0x04, /*< IPND draft 02 */
+				DISCO_VERSION_02 = 0x04, /*< IPND draft 02 */
 				DISCO_UNSPEC     = 0xFF, /*< Unspecified discovery protocol */
 			};
 
@@ -209,5 +211,4 @@ namespace dtn {
 	} // namespace net
 } // namespace dtn
 
-
-
+#endif // _DISCOVERY_H_

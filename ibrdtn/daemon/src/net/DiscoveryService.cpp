@@ -31,21 +31,21 @@ namespace dtn
 	namespace net
 	{
 		DiscoveryService::DiscoveryService()
-		 : _service_protocol(dtn::core::Node::CONN_UNDEFINED)
+		 : /**/_service_protocol(dtn::core::Node::CONN_UNDEFINED)
 		{
 		}
 
-		DiscoveryService::DiscoveryService(Discovery::tag_t service_tag)
-		 : service_tag_(service_tag)
+		DiscoveryService::DiscoveryService(const Discovery::tag_t service_tag, const std::string service_name)
+		 : service_tag_(service_tag), service_name_(service_name)
 		{
 		}
 
-		DiscoveryService::DiscoveryService(const dtn::core::Node::Protocol p, const std::string &parameters)
+		/**/DiscoveryService::DiscoveryService(const dtn::core::Node::Protocol p, const std::string &parameters)
 		 : _service_protocol(p), _service_name(asTag(p)), _service_parameters(parameters)
 		{
 		}
 
-		DiscoveryService::DiscoveryService(const std::string &name, const std::string &parameters)
+		/**/DiscoveryService::DiscoveryService(const std::string &name, const std::string &parameters)
 		 : _service_protocol(asProtocol(name)), _service_name(name), _service_parameters(parameters)
 		{
 		}
@@ -60,12 +60,45 @@ namespace dtn
 			}
 		}
 
-		dtn::data::Length DiscoveryService::getLength() const
+		dtn::data::Length DiscoveryService::getLength(Discovery::Protocol version) const throw (Discovery::WrongVersionException)
 		{
-			BundleString name(_service_name);
-			BundleString parameters(_service_parameters);
-
-			return name.getLength() + parameters.getLength();
+			dtn::data::Number length;
+			switch (version)
+			{
+				case Discovery::DISCO_VERSION_02:
+				{
+					if (_param)
+					{
+						length = _param->getLength(Discovery::DISCO_VERSION_02);
+						return 1               // tag
+							+ length.getLength() // length
+							+ length.get();      // value
+					}
+					else
+					{
+						return 0;
+					}
+				}
+				case Discovery::DISCO_VERSION_01:
+				case Discovery::DISCO_VERSION_00:
+				{
+					if (_param)
+					{
+						BundleString name(asTag(_service_protocol));
+						return name.getLength() + _param->getLength(version);
+					}
+					else
+					{
+						return 0;
+					}
+				}
+				default:
+				{
+					std::ostringstream err;
+					err << std::hex << version;
+					throw Discovery::WrongVersionException(err.str());
+				}
+			}
 		}
 
 		dtn::core::Node::Protocol DiscoveryService::getProtocol() const
@@ -86,6 +119,52 @@ namespace dtn
 		void DiscoveryService::update(const std::string &parameters)
 		{
 			_service_parameters = parameters;
+		}
+
+		std::string serialize(const Discovery::Protocol version) const throw (Discovery::WrongVersionException, Discovery::IllegalServiceException)
+		{
+			std::ostringstream ss;
+			// FIXME version
+			switch (version)
+			{
+				case Discovery::DISCO_VERSION_02:
+				{
+					ss.write((char *) service_tag_, 1);
+					for(std::list<DiscoveryTypePtr>::const_iterator it;
+					    it != parameters_.end(); it++)
+					{
+						ss << (*it).serialize(version);
+					}
+					break;
+				}
+				default:
+					throw Discovery::WrongVersionException();
+			}
+
+			return ss.str();
+		}
+
+		dtn::data::Length deserialize(const Discovery::Protocol version, std::istream& stream) throw (Discovery::WrongVersionException, Discovery::IllegalServiceException)
+		{
+			// FIXME version
+			switch (version)
+			{
+				case Discovery::DISCO_VERSION_02:
+				{
+					ss.put((char) service_tag_);
+					for(std::list<DiscoveryTypePtr>::const_iterator it;
+					    it != parameters_.end(); it++)
+					{
+						ss << (*it).serialize(version);
+					}
+					break;
+				}
+				default:
+					throw Discovery::WrongVersionException();
+			}
+
+			return ss.str();
+		}
 		}
 
 		dtn::core::Node::Protocol DiscoveryService::asProtocol(const std::string &tag)

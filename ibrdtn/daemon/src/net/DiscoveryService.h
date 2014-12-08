@@ -42,7 +42,7 @@ namespace dtn
 			/**/DiscoveryService(const std::string &name, const std::string &parameters);
 			virtual ~DiscoveryService();
 
-			dtn::data::Length getLength() const;
+			dtn::data::Length getLength(Discovery::Protocol version) const throw (Discovery::WrongVersionException);
 
 			dtn::core::Node::Protocol getProtocol() const;
 			const std::string& getName() const;
@@ -66,8 +66,13 @@ namespace dtn
 				parameters_.push_back(DiscoveryTypePtr(param));
 			}
 
+			std::string serialize(const Discovery::Protocol version) const throw (Discovery::WrongVersionException, Discovery::IllegalServiceException);
+			dtn::data::Length deserialize(const Discovery::Protocol version, std::istream& stream) throw (Discovery::WrongVersionException, Discovery::IllegalServiceException);
+
+
+
 		protected:
-			/** hack for putting abstract base class ptrs into a container */
+			/** workaround for putting abstract base class ptrs into a container */
 			struct DiscoveryTypePtr
 			{
 				DiscoveryTypePtr(Discovery::Type * ptr) : p(ptr) {}
