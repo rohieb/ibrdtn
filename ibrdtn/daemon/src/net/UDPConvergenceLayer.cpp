@@ -97,15 +97,15 @@ namespace dtn
 		{
 			// announce port only if we are bound to any interface
 			if (_net.isAny()) {
-				DiscoveryService service4(UDP_V4_TAG);
-				service4.addParameter(new Discovery::Fixed32Field(0, "ip"));
-				service4.addParameter(new Discovery::Fixed16Field(_port, "port"));
+				DiscoveryService service4(UDP_V4_TAG, "udp");
+				service4.addParameter(new Discovery::Fixed32(0, "ip"));
+				service4.addParameter(new Discovery::Fixed16(_port, "port"));
 				announcement.addService(service4);
 
-				DiscoveryService service6(UDP_V6_TAG);
+				DiscoveryService service6(UDP_V6_TAG, "udp");
 				std::string bytes(16, '\0');
-				service6.addParameter(new Discovery::BytesField(bytes, "ip"));
-				service6.addParameter(new Discovery::Fixed16Field(_port, "port"));
+				service6.addParameter(new Discovery::Bytes(bytes, "ip"));
+				service6.addParameter(new Discovery::Fixed16(_port, "port"));
 				announcement.addService(service6);
 
 				return;
@@ -145,9 +145,9 @@ namespace dtn
 							in_addr ia;
 							inet_pton(f, addr.address().c_str(), &ia);
 
-							DiscoveryService service(UDP_V4_TAG);
-							service.addParameter(new Discovery::Fixed32Field(ia.s_addr, "ip"));
-							service.addParameter(new Discovery::Fixed16Field(_port, "port"));
+							DiscoveryService service(UDP_V4_TAG, "udp");
+							service.addParameter(new Discovery::Fixed32(ia.s_addr, "ip"));
+							service.addParameter(new Discovery::Fixed16(_port, "port"));
 							announcement.addService(service);
 						}
 						else if (f == AF_INET6)
@@ -155,10 +155,10 @@ namespace dtn
 							in6_addr ia;
 							inet_pton(f, addr.address().c_str(), &ia);
 
-							DiscoveryService service(UDP_V6_TAG);
+							DiscoveryService service(UDP_V6_TAG, "udp");
 							std::string bytes((char *) &ia.s6_addr, 16);
-							service.addParameter(new Discovery::BytesField(bytes, "ip"));
-							service.addParameter(new Discovery::Fixed16Field(_port, "port"));
+							service.addParameter(new Discovery::Bytes(bytes, "ip"));
+							service.addParameter(new Discovery::Fixed16(_port, "port"));
 							announcement.addService(service);
 						}
 						else
@@ -179,15 +179,15 @@ namespace dtn
 			// if we still not announced anything...
 			if (!announced) {
 				// announce at least our local port
-				DiscoveryService service6(UDP_V6_TAG);
+				DiscoveryService service6(UDP_V6_TAG, "udp");
 				std::string bytes(16, '\0');
-				service6.addParameter(new Discovery::BytesField(bytes, "ip"));
-				service6.addParameter(new Discovery::Fixed16Field(_port, "port"));
+				service6.addParameter(new Discovery::Bytes(bytes, "ip"));
+				service6.addParameter(new Discovery::Fixed16(_port, "port"));
 				announcement.addService(service6);
 
-				DiscoveryService service4(UDP_V4_TAG);
-				service4.addParameter(new Discovery::Fixed32Field(0, "ip"));
-				service4.addParameter(new Discovery::Fixed16Field(_port, "port"));
+				DiscoveryService service4(UDP_V4_TAG, "udp");
+				service4.addParameter(new Discovery::Fixed32(0, "ip"));
+				service4.addParameter(new Discovery::Fixed16(_port, "port"));
 				announcement.addService(service4);
 			}
 		}

@@ -22,6 +22,8 @@
 #include "net/DiscoveryService.h"
 #include "ibrdtn/data/SDNV.h"
 #include "ibrdtn/data/BundleString.h"
+#include <ibrdtn/utils/Utils.h>
+#include <ibrcommon/Logger.h>
 #include <string>
 
 using namespace dtn::data;
@@ -31,33 +33,27 @@ namespace dtn
 	namespace net
 	{
 		DiscoveryService::DiscoveryService()
-		 : /**/_service_protocol(dtn::core::Node::CONN_UNDEFINED)
+		 : /*FIXME*/_service_protocol(dtn::core::Node::CONN_UNDEFINED)
 		{
 		}
 
 		DiscoveryService::DiscoveryService(const Discovery::tag_t service_tag, const std::string service_name)
-		 : service_tag_(service_tag), service_name_(service_name)
+		 : _service_tag(service_tag), _service_name(service_name)
 		{
 		}
 
-		/**/DiscoveryService::DiscoveryService(const dtn::core::Node::Protocol p, const std::string &parameters)
+		/*FIXME*/DiscoveryService::DiscoveryService(const dtn::core::Node::Protocol p, const std::string &parameters)
 		 : _service_protocol(p), _service_name(asTag(p)), _service_parameters(parameters)
 		{
 		}
 
-		/**/DiscoveryService::DiscoveryService(const std::string &name, const std::string &parameters)
+		/*FIXME*/DiscoveryService::DiscoveryService(const std::string &name, const std::string &parameters)
 		 : _service_protocol(asProtocol(name)), _service_name(name), _service_parameters(parameters)
 		{
 		}
 
 		DiscoveryService::~DiscoveryService()
 		{
-			for (std::list<DiscoveryTypePtr>::iterator it = parameters_.begin();
-			     it != parameters_.end();
-			     it++)
-			{
-				delete (*it).p;
-			}
 		}
 
 		dtn::data::Length DiscoveryService::getLength(Discovery::Protocol version) const throw (Discovery::WrongVersionException)
@@ -67,30 +63,31 @@ namespace dtn
 			{
 				case Discovery::DISCO_VERSION_02:
 				{
-					if (_param)
+					length = 0;
+					std::vector<refcnt_ptr<Discovery::Type> >::const_iterator it;
+					for (it = _parameters.begin(); it != _parameters.end(); it++)
 					{
-						length = _param->getLength(Discovery::DISCO_VERSION_02);
-						return 1               // tag
-							+ length.getLength() // length
-							+ length.get();      // value
+						length += (*it)->getLength(Discovery::DISCO_VERSION_02);
 					}
-					else
-					{
-						return 0;
-					}
+					return 1               // sizeof(tag)
+						+ length.getLength() // sizeof(length)
+						+ length.get();      // sizeof(value)
 				}
 				case Discovery::DISCO_VERSION_01:
 				case Discovery::DISCO_VERSION_00:
 				{
-					if (_param)
+					length = 0;
+					std::vector<refcnt_ptr<Discovery::Type> >::const_iterator it;
+					for (it = _parameters.begin(); it != _parameters.end(); it++)
 					{
-						BundleString name(asTag(_service_protocol));
-						return name.getLength() + _param->getLength(version);
+						length += (*it)->getLength(version);
+						length += 1; // ";" separator
 					}
-					else
+					if (_parameters.size() > 0)
 					{
-						return 0;
+						length -= 1; // no separator at the end
 					}
+					return _service_name.getLength() + length.getLength() + length.get();
 				}
 				default:
 				{
@@ -121,7 +118,7 @@ namespace dtn
 			_service_parameters = parameters;
 		}
 
-		std::string serialize(const Discovery::Protocol version) const throw (Discovery::WrongVersionException, Discovery::IllegalServiceException)
+		std::string DiscoveryService::serialize(const Discovery::Protocol version) const throw (Discovery::WrongVersionException, Discovery::IllegalServiceException)
 		{
 			std::ostringstream ss;
 			// FIXME version
@@ -129,13 +126,32 @@ namespace dtn
 			{
 				case Discovery::DISCO_VERSION_02:
 				{
-					ss.write((char *) service_tag_, 1);
-					for(std::list<DiscoveryTypePtr>::const_iterator it;
-					    it != parameters_.end(); it++)
+					ss.put(static_cast<char>(_service_tag));
+					std::vector<refcnt_ptr<Discovery::Type> >::const_iterator it;
+					for(it = _parameters.begin(); it != _parameters.end(); it++)
 					{
-						ss << (*it).serialize(version);
+						ss << (*it)->serialize(version);
 					}
 					break;
+				}
+				case Discovery::DISCO_VERSION_01:
+				case Discovery::DISCO_VERSION_00:
+				{
+					BundleString params;
+					std::vector<refcnt_ptr<Discovery::Type> >::const_iterator it;
+					for(it = _parameters.begin(); it != _parameters.end(); it++)
+					{
+						params.append((*it)->serialize(version));
+						params.append(";");
+					}
+					if (_parameters.size() > 0)
+					{
+						// remove last ';' separator for compatibility
+						params.erase(params.size());
+					}
+
+					ss << _service_name;
+					ss << params;
 				}
 				default:
 					throw Discovery::WrongVersionException();
@@ -144,27 +160,160 @@ namespace dtn
 			return ss.str();
 		}
 
-		dtn::data::Length deserialize(const Discovery::Protocol version, std::istream& stream) throw (Discovery::WrongVersionException, Discovery::IllegalServiceException)
+		dtn::data::Length DiscoveryService::deserialize(const Discovery::Protocol version, std::istream& stream) throw (Discovery::WrongVersionException, Discovery::ParseException, Discovery::IllegalServiceException)
 		{
-			// FIXME version
+			std::ostringstream err;
+			size_t bytes_read = 0;
+
 			switch (version)
 			{
+				case Discovery::DISCO_VERSION_00:
+				case Discovery::DISCO_VERSION_01:
+				{
+					dtn::data::BundleString bs;
+					stream >> bs;
+					if (stream.bad() || stream.fail())
+					{
+						throw Discovery::ParseException("stream was bad after reading "
+							"IPND service name", 0);
+					}
+					bytes_read = stream.gcount();
+
+					_service_name = bs;
+
+					stream >> bs;
+					if (stream.bad() || stream.fail())
+					{
+						throw Discovery::ParseException("stream was bad after reading "
+							"IPND service parameters", bytes_read);
+					}
+					bytes_read = stream.gcount();
+
+					std::vector<string> params = dtn::utils::Utils::tokenize(";", bs);
+					for (std::vector<string>::iterator it = params.begin();
+					     it != params.end(); it++)
+					{
+						std::istringstream ss(*it);
+
+						// FIXME: do our best to determine the parameter type
+						Discovery::Type * p;
+						size_t sep = it->find_first_of('=');
+						std::string key, value;
+
+						if (sep != std::string::npos)
+						{
+							// FIXME: parse k-v into parameter types
+						}
+						//p.deserialize(version, stream);
+						_parameters.push_back(refcnt_ptr<Discovery::Type>(p));
+					}
+
+					break;
+				} // case DISCO_VERSION_00/01
+
 				case Discovery::DISCO_VERSION_02:
 				{
-					ss.put((char) service_tag_);
-					for(std::list<DiscoveryTypePtr>::const_iterator it;
-					    it != parameters_.end(); it++)
+					// FIXME: read constructed type tag & length
+					char tag = stream.get();
+					if (stream.bad() || stream.fail())
 					{
-						ss << (*it).serialize(version);
+						throw Discovery::ParseException("could not parse IPND 02 tag", 0);
 					}
-					break;
-				}
-				default:
-					throw Discovery::WrongVersionException();
-			}
+					bytes_read = 1;
 
-			return ss.str();
-		}
+					dtn::data::Number length;
+					stream >> length;
+					if (stream.bad() || stream.fail())
+					{
+						err << "could not parse length for IPND 02 tag " << std::hex << tag;
+						throw Discovery::ParseException(err.str(), bytes_read);
+					}
+					bytes_read += stream.gcount();
+					size_t last_good_pos = stream.tellg();
+
+					while (!stream.bad() && !stream.fail())
+					{
+						Discovery::Type * p;
+
+						switch (tag)
+						{
+							case Discovery::Boolean::TAG: p = new Discovery::Boolean; break;
+							case Discovery::UInt64::TAG:  p = new Discovery::UInt64;  break;
+							case Discovery::SInt64::TAG:  p = new Discovery::SInt64;  break;
+							case Discovery::Fixed16::TAG: p = new Discovery::Fixed16; break;
+							case Discovery::Fixed32::TAG: p = new Discovery::Fixed32; break;
+							case Discovery::Fixed64::TAG: p = new Discovery::Fixed64; break;
+							case Discovery::Float::TAG:   p = new Discovery::Float;   break;
+							case Discovery::Double::TAG:  p = new Discovery::Double;  break;
+							case Discovery::String::TAG:  p = new Discovery::String;  break;
+							case Discovery::Bytes::TAG:   p = new Discovery::Bytes;   break;
+							default:
+							{
+								tag = stream.get(); // get unknown tag field
+								bytes_read = 1;
+								dtn::data::Number length;
+								stream >> length;
+								bytes_read += stream.gcount();
+
+								std::ostringstream err;
+								if (stream.bad() || stream.fail())
+								{
+									err << "could not read length for unknown IPND 02 tag "
+											<< std::hex << tag << ", giving up";
+									throw Discovery::ParseException(err.str(), bytes_read);
+								}
+
+								stream.seekg(length.get(), std::ios_base::cur);
+								IBRCOMMON_LOGGER_TAG("DiscoveryService", info)
+									<< "don't know how to handle unknown IPND 02 tag " << std::hex
+									<< tag << ", skipping" << IBRCOMMON_LOGGER_ENDL;
+								continue;
+							} // default
+						} // switch
+
+						try
+						{
+							bytes_read += p->deserialize(version, stream);
+						}
+						catch (Discovery::ParseException& e)
+						{
+							if (stream.bad() || stream.fail())
+							{
+								err << "could not parse value for IPND 02 tag " << std::hex
+									<< tag << ": end of stream";
+								throw Discovery::ParseException(err.str(), bytes_read);
+							}
+							stream.seekg(last_good_pos, std::ios_base::beg);
+							stream.seekg(length.get(), std::ios_base::cur);
+							bytes_read += length.get();
+							IBRCOMMON_LOGGER_TAG("DiscoveryService", info)
+								<< "could not parse value for IPND 02 tag " << std::hex
+								<< tag << ", skipping. exception was: " << e.what()
+								<< IBRCOMMON_LOGGER_ENDL;
+							continue;
+						}
+
+						addParameter(p);
+					} // while
+
+					if (bytes_read != length.get()+length.getLength()+1)
+					{
+							IBRCOMMON_LOGGER_TAG("DiscoveryService", info) << "expected "
+								<< length << " bytes, but read " << bytes_read
+								<< " while parsing IPND 02 tag " << std::hex << tag
+								<< IBRCOMMON_LOGGER_ENDL;
+					}
+					return bytes_read;
+				} // case DISCO_VERSION_02
+
+				default:
+				{
+					err << std::dec << version;
+					throw Discovery::WrongVersionException(err.str());
+				}
+			} // switch version
+
+			return bytes_read;
 		}
 
 		dtn::core::Node::Protocol DiscoveryService::asProtocol(const std::string &tag)

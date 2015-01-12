@@ -24,10 +24,12 @@
 
 #include "core/Node.h"
 #include "net/Discovery.h"
+#include <ibrcommon/refcnt_ptr.h>
 #include <ibrdtn/data/Number.h>
 #include <stdlib.h>
 #include <iostream>
 #include <stdint.h>
+#include <vector>
 
 namespace dtn
 {
@@ -37,7 +39,7 @@ namespace dtn
 		{
 		public:
 			DiscoveryService();
-			DiscoveryService(Discovery::tag_t service_tag);
+			DiscoveryService(const Discovery::tag_t service_tag, const std::string service_name);
 			/**/DiscoveryService(const dtn::core::Node::Protocol p, const std::string &parameters);
 			/**/DiscoveryService(const std::string &name, const std::string &parameters);
 			virtual ~DiscoveryService();
@@ -46,42 +48,43 @@ namespace dtn
 
 			dtn::core::Node::Protocol getProtocol() const;
 			const std::string& getName() const;
-			const std::string& getParameters() const;
+			/*FIXME deprecated*/ const std::string& getParameters() const;
 
 			/**
 			 * Update the parameters of this service
 			 */
-			void update(const std::string &parameters);
+			/*FIXME deprecated*/void update(const std::string &parameters);
 
 			/**
 			 * convert a protocol identifier to a tag
 			 */
-			static std::string asTag(const dtn::core::Node::Protocol proto);
-			static dtn::core::Node::Protocol asProtocol(const std::string &tag);
+			/*FIXME deprecated?*/static std::string asTag(const dtn::core::Node::Protocol proto);
+			/*FIXME deprecated?*/static dtn::core::Node::Protocol asProtocol(const std::string &tag);
 
 			/**
 			 * @param param the DiscoveryService takes ownership of this pointer
 			 */
 			void addParameter(Discovery::Type * param) {
-				parameters_.push_back(DiscoveryTypePtr(param));
+				_parameters.push_back(refcnt_ptr<Discovery::Type>(param));
 			}
+			//// TODO:
+			//const std::vector<refcnt_ptr<Discovery::Type> >& getParameters() const
+			//{
+				//return _parameters;
+			//}
+			//std::vector<refcnt_ptr<Discovery::Type> >& getParameters()
+			//{
+				//return _parameters;
+			//}
 
 			std::string serialize(const Discovery::Protocol version) const throw (Discovery::WrongVersionException, Discovery::IllegalServiceException);
-			dtn::data::Length deserialize(const Discovery::Protocol version, std::istream& stream) throw (Discovery::WrongVersionException, Discovery::IllegalServiceException);
-
-
+			dtn::data::Length deserialize(const Discovery::Protocol version, std::istream& stream) throw (Discovery::WrongVersionException, Discovery::ParseException, Discovery::IllegalServiceException);
 
 		protected:
-			/** workaround for putting abstract base class ptrs into a container */
-			struct DiscoveryTypePtr
-			{
-				DiscoveryTypePtr(Discovery::Type * ptr) : p(ptr) {}
-				Discovery::Type * p;
-			};
-			Discovery::tag_t service_tag_;
-			std::list<DiscoveryTypePtr> parameters_;
+			Discovery::tag_t _service_tag;
+			std::vector<refcnt_ptr<Discovery::Type> > _parameters;
 			/**/dtn::core::Node::Protocol _service_protocol;
-			/**/std::string _service_name;
+			dtn::data::BundleString _service_name;
 			/**/std::string _service_parameters;
 
 		private:

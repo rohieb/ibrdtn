@@ -197,15 +197,15 @@ namespace dtn
 			// announce port only if we are bound to any interface
 			if (_interfaces.empty() && (_any_port > 0)) {
 				// ... set the port only
-				DiscoveryService service4(TCP_V4_TAG);
-				service4.addParameter(new Discovery::Fixed32Field(0, "ip"));
-				service4.addParameter(new Discovery::Fixed16Field(_portmap[iface], "port"));
+				DiscoveryService service4(TCP_V4_TAG, "tcp");
+				service4.addParameter(new Discovery::Fixed32(0, "ip"));
+				service4.addParameter(new Discovery::Fixed16(_portmap[iface], "port"));
 				beacon.addService(service4);
 
-				DiscoveryService service6(TCP_V6_TAG);
+				DiscoveryService service6(TCP_V6_TAG, "tcp");
 				std::string bytes(16, '\0');
-				service6.addParameter(new Discovery::BytesField(bytes, "ip"));
-				service6.addParameter(new Discovery::Fixed16Field(_portmap[iface], "port"));
+				service6.addParameter(new Discovery::Bytes(bytes, "ip"));
+				service6.addParameter(new Discovery::Fixed16(_portmap[iface], "port"));
 				beacon.addService(service6);
 
 				return;
@@ -247,9 +247,9 @@ namespace dtn
 									in_addr ia;
 									inet_pton(f, addr.address().c_str(), &ia);
 
-									DiscoveryService service(TCP_V4_TAG);
-									service.addParameter(new Discovery::Fixed32Field(ia.s_addr, "ip"));
-									service.addParameter(new Discovery::Fixed16Field(_portmap[iface], "port"));
+									DiscoveryService service(TCP_V4_TAG, "tcp");
+									service.addParameter(new Discovery::Fixed32(ia.s_addr, "ip"));
+									service.addParameter(new Discovery::Fixed16(_portmap[iface], "port"));
 									beacon.addService(service);
 								}
 								else if (f == AF_INET6)
@@ -257,10 +257,10 @@ namespace dtn
 									in6_addr ia;
 									inet_pton(f, addr.address().c_str(), &ia);
 
-									DiscoveryService service(TCP_V6_TAG);
+									DiscoveryService service(TCP_V6_TAG, "tcp");
 									std::string bytes((char *) &ia.s6_addr, 16);
-									service.addParameter(new Discovery::BytesField(bytes, "ip"));
-									service.addParameter(new Discovery::Fixed16Field(_portmap[iface], "port"));
+									service.addParameter(new Discovery::Bytes(bytes, "ip"));
+									service.addParameter(new Discovery::Fixed16(_portmap[iface], "port"));
 									beacon.addService(service);
 								}
 								else
@@ -283,15 +283,15 @@ namespace dtn
 					if (!announced) {
 						std::stringstream service;
 						// ... set the port only
-						DiscoveryService service4(TCP_V4_TAG);
-						service4.addParameter(new Discovery::Fixed32Field(0, "ip"));
-						service4.addParameter(new Discovery::Fixed16Field(_portmap[iface], "port"));
+						DiscoveryService service4(TCP_V4_TAG, "tcp");
+						service4.addParameter(new Discovery::Fixed32(0, "ip"));
+						service4.addParameter(new Discovery::Fixed16(_portmap[iface], "port"));
 						beacon.addService(service4);
 
-						DiscoveryService service6(TCP_V6_TAG);
+						DiscoveryService service6(TCP_V6_TAG, "tcp");
 						std::string bytes(16, '\0');
-						service6.addParameter(new Discovery::BytesField(bytes, "ip"));
-						service6.addParameter(new Discovery::Fixed16Field(_portmap[iface], "port"));
+						service6.addParameter(new Discovery::Bytes(bytes, "ip"));
+						service6.addParameter(new Discovery::Fixed16(_portmap[iface], "port"));
 						beacon.addService(service6);
 					}
 					return;
